@@ -1,0 +1,58 @@
+# Manifiesto del corpus normativo centroamericano (aduanas / comercio exterior), usado por
+# `python -m ocr_rag.cli cargar-corpus`.
+#
+# Cada bloque `[[fuente]]` describe un documento público a descargar y cargar al corpus RAG.
+# Campos:
+#   id           único, [a-z0-9-]+ (se usa como nombre de archivo interno: "<id>.pdf")
+#   titulo       título completo de la publicación, con edición si aplica
+#   url          descarga directa; debe ser https (también tras redirecciones)
+#   idioma       opcional; si se omite, se usa Settings.tesseract_langs (OCR_RAG_TESSERACT_LANGS)
+#   descripcion  texto libre
+#   licencia     texto libre, informativo (no se valida ni se hace cumplir)
+#   verificado   fecha (AAAA-MM-DD) en la que se confirmó que la url respondía y que la norma
+#                seguía vigente
+#
+# Para sumar una fuente nueva: agregar un bloque `[[fuente]]` al final de la lista, verificar a
+# mano que la url responda un PDF público y legal de redistribuir, y anotar `verificado` con la
+# fecha de esa revisión.
+
+[[fuente]]
+id = "cauca-iv"
+titulo = "Código Aduanero Uniforme Centroamericano (CAUCA IV) — Resolución N.º 223-2008 (COMIECO-XLIX)"
+url = "https://faolex.fao.org/docs/pdf/sica205668.pdf"
+descripcion = "Texto del CAUCA IV (arts. 1 a 134), vigente desde 2008. Deroga el CAUCA III (Res. 85-2002). Versión original de 2008: no incluye reformas posteriores."
+licencia = "Texto normativo oficial (compilado por FAOLEX / FAO)"
+verificado = 2026-09-26
+
+[[fuente]]
+id = "recauca-iv"
+titulo = "Reglamento del Código Aduanero Uniforme Centroamericano (RECAUCA IV) — Resolución N.º 224-2008 (COMIECO-XLIX)"
+url = "https://faolex.fao.org/docs/pdf/sica205787.pdf"
+descripcion = "Texto del RECAUCA vigente (arts. 1 a 646), reglamento del CAUCA IV. Reemplaza al reglamento de la Res. 101-2002. Versión original de 2008: no incluye reformas posteriores."
+licencia = "Texto normativo oficial (compilado por FAOLEX / FAO)"
+verificado = 2026-09-26
+
+[[fuente]]
+id = "convenio-arancelario-aduanero"
+titulo = "Convenio sobre el Régimen Arancelario y Aduanero Centroamericano — Publicación Oficial de la SIECA (con Primer, Segundo y Tercer Protocolos)"
+url = "https://sde.gob.hn/wp-content/uploads/2017/08/Convenio-Arancelario-y-Aduanero-Centroamericano.pdf"
+descripcion = "Convenio sobre el Régimen Arancelario y Aduanero Centroamericano, con sus Protocolos, publicación oficial de la SIECA."
+licencia = "Publicación oficial"
+verificado = 2026-09-26
+
+# -------------------------------------------------------------------------------------------
+# Fuentes descartadas (no volver a agregarlas sin resolver primero el motivo):
+#
+# - CAUCA de SEFIN Honduras (sefin.gob.hn): publica el CAUCA III (Acuerdo 023-2003), derogado
+#   por el CAUCA IV vigente; cargarlo confundiría al RAG con normativa que ya no aplica.
+# - CAUCA de aduanas.gob.hn: el servidor responde 403 Forbidden a descargas automáticas (exige
+#   un navegador real); no se puede descargar de forma confiable con este comando.
+# - Edición CAUCA y RECAUCA de la Imprenta Nacional de Costa Rica (imprentanacional.go.cr,
+#   2016): aunque el título sugiere CAUCA IV + RECAUCA, el PDF compila TRES instrumentos:
+#   CAUCA III derogado (págs. 11-33), CAUCA IV vigente (págs. 35-67) y el reglamento VIEJO del
+#   CAUCA III, Res. 101-2002 (págs. 69-133), no el RECAUCA vigente. Mezclarlos hace que el RAG
+#   cite artículos derogados. Reemplazada por "cauca-iv" y "recauca-iv" (FAOLEX), arriba.
+#   Lección: verificar el contenido página por página, no solo el título ni la primera página.
+# - Convenio de transparencia.mh.gob.sv: es un duplicado del mismo Convenio Arancelario y
+#   Aduanero Centroamericano ya cargado desde la publicación oficial de SIECA/SDE, arriba.
+# -------------------------------------------------------------------------------------------

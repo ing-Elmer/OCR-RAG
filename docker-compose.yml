@@ -1,11 +1,14 @@
-# Base de datos local para desarrollo: PostgreSQL 16 con pgvector.
-# Solo para desarrollo local; en producción la base es la de Railway (ver CLAUDE.md > Deploy).
+# Entorno local de desarrollo: PostgreSQL 16 con pgvector + backend (misma imagen que Railway,
+# con Tesseract incluido). En producción la base y el backend son los de Railway (CLAUDE.md > Deploy).
 #
 # Uso:
 #   1. Copiar .env.example a .env (raíz) y completar OCR_RAG_PG_PASSWORD.
-#   2. docker compose up -d
-#   3. Ejecutar a mano backend/db/*.sql (este compose NO los ejecuta: regla sql-migraciones).
+#   2. Completar backend/.env (ver backend/.env.example).
+#   3. docker compose up -d --build            (base + backend)
+#      docker compose up -d postgres           (solo la base, para correr el backend con uv)
+#   4. Ejecutar a mano backend/db/*.sql (este compose NO los ejecuta: regla sql-migraciones).
 #
+# DSN para correr el backend FUERA de Docker (uv run), en backend/.env:
 # DSN para backend/.env:
 #   OCR_RAG_DB_MAIN_DSN=postgresql://<usuario>:<password>@127.0.0.1:<puerto>/<base>
 #   Usar 127.0.0.1 y no localhost: en Windows localhost resuelve primero a ::1 (IPv6) y el
@@ -34,6 +37,30 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ocr-rag-backend
+    restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: true
+    environment:
+      # Dentro de la red de Docker la base es el servicio `postgres` en el puerto 5432: este valor
+      # pisa el DSN de backend/.env (que apunta a 127.0.0.1:15432 para correr con uv).
+      OCR_RAG_DB_MAIN_DSN: postgresql://${OCR_RAG_PG_USER:-ocr_rag}:${OCR_RAG_PG_PASSWORD:?Falta OCR_RAG_PG_PASSWORD en el .env de la raíz}@postgres:5432/${OCR_RAG_PG_DB:-ocr_rag}
+    ports:
+      - "127.0.0.1:${OCR_RAG_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
 volumes:
   ocr_rag_pgdata:

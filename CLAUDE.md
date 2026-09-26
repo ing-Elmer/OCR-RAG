@@ -62,13 +62,30 @@ Los DSN/credenciales vienen de variables de entorno (ver `backend/.env.example`)
 - Variables del frontend en Vercel: `VITE_API_URL` (Production y Preview).
 
 ### Integraciones externas
-- **Tesseract local** (`pytesseract` + `poppler-utils`, instalados en la imagen del backend) —
-  OCR de PDFs e imágenes. Es una librería **bloqueante**: se ejecuta con `run_in_threadpool`
-  dentro de la `BackgroundTaskQueue`, nunca en el request HTTP.
+- **Extracción de texto**: en los PDF se lee primero la capa de texto nativa (`pypdf`); solo las
+  páginas sin texto se rasterizan (`pypdfium2`, sin dependencias de sistema) y pasan por
+  **Tesseract** (`pytesseract`, idiomas `spa`/`eng` instalados en la imagen). Las imágenes van
+  directo a Tesseract. Todo es **bloqueante**: corre con `run_in_threadpool` dentro de la
+  `BackgroundTaskQueue`, nunca en el request HTTP.
+- **Tesseract no está instalado en Windows**: en desarrollo el backend corre en Docker Compose
+  (servicio `backend`, misma imagen que Railway).
 - **OpenAI** — generación de respuestas (chat) y embeddings (`text-embedding-3-small`, 1536
   dimensiones). API key como `SecretStr` en `Settings`.
 - **pgvector** — los embeddings viven en `ocr_rag.ocr_documento_chunk.embedding` en la misma
   base PostgreSQL, no en un vector store aparte.
+
+### Corpus normativo
+- Manifiesto empaquetado: `backend/src/ocr_rag/cli/corpus/normativa_centroamerica.toml`
+  (CAUCA IV, RECAUCA IV y Convenio Arancelario). Carga:
+  `docker compose exec backend python -m ocr_rag.cli cargar-corpus --usuario <u> [--dry-run]`.
+  Es idempotente por SHA-256 y guarda `fuente_url`. Cambiar el manifiesto requiere
+  reconstruir la imagen.
+- **Antes de sumar una fuente, verificar su contenido página por página** (qué resolución y qué
+  rango de artículos trae), no solo el título. La edición de la Imprenta Nacional de CR se
+  presentaba como "CAUCA y RECAUCA" y en realidad mezclaba el CAUCA III derogado con el
+  reglamento viejo (Res. 101-2002). El RAG terminó citando artículos derogados.
+- Los textos de FAOLEX son las versiones originales de 2008 y **no incluyen reformas
+  posteriores**. Pendiente: sumar las resoluciones modificatorias vigentes.
 
 ### Integración con Codex
 Codex CLI (≥ 0.157) se usa desde Claude en modo no interactivo. Ya no expone un servidor MCP
@@ -92,17 +109,17 @@ relevantes y pasándoselos al modelo de chat.
 ## Excepciones al estándar
 - **Rama base `Develop`** (con mayúscula) en lugar de `develop`: es el nombre que ya existe en el
   remoto. Los workflows y la protección de rama usan esa grafía exacta.
-- **Almacenamiento de los archivos subidos: sin definir.** El contenedor de Railway es efímero,
-  así que hay que elegir entre volumen de Railway, un bucket S3 o guardar el binario como
-  `bytea` en PostgreSQL. Hasta que se decida, no hay endpoint de subida de documentos.
+- **Archivos subidos como `bytea` en PostgreSQL** (tabla `ocr_documento_archivo`), no en disco
+  ni en un bucket: el contenedor de Railway es efímero y así no hace falta otro servicio.
+  Máximo `OCR_RAG_MAX_UPLOAD_MB` (20 MB por defecto). Los listados nunca leen el `bytea`.
 
 ## Deuda técnica conocida
 Proyecto nuevo: el esqueleto se creó alineado al estándar. Lo que falta todavía no es deuda
 sino alcance pendiente:
 
 - **Sin límite de intentos de login** (rate limiting / bloqueo tras fallos): pendiente.
-- **Scripts SQL por ambiente**: `001` ejecutado en la base local; `002_seed_roles_permisos.sql`
-  pendiente de ejecutar. En Railway, ninguno todavía.
+- **Scripts SQL por ambiente**: base local con `001` y `002` ejecutados. En Railway, ninguno
+  todavía.
 - **Deploy sin configurar**: Railway y Vercel todavía no existen (ver TODO en la sección Deploy).
 - **`gh` no está instalado** en la máquina local, así que `/pr` no puede crear el PR desde acá.
 - **Red corporativa con proxy TLS**: en esta máquina `uv sync` falla con

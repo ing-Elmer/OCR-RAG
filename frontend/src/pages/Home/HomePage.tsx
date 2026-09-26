@@ -1,25 +1,18 @@
-import { useAuth } from '@/context/AuthContext';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useUser } from '@/context/UserContext';
 import { useHealth } from '@/hooks/useHealth';
-import { Button } from '@/components/ui/Button';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 
 /** Página principal: perfil del usuario (`/api/me`) y estado del sistema (`/health`). */
 export function HomePage() {
-  const { logout } = useAuth();
   const { usuario, isLoading: cargandoUsuario, error: errorUsuario, reload: recargarUsuario } = useUser();
   const { data: salud, isLoading: cargandoSalud, error: errorSalud, reload: recargarSalud } = useHealth();
 
   return (
-    <main className="min-h-screen bg-surface px-6 py-8">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-text">OCR-RAG</h1>
-        <Button variant="secondary" onClick={logout}>
-          Cerrar sesión
-        </Button>
-      </header>
+    <AppLayout>
+      <h1 className="mb-8 text-xl font-semibold text-text">OCR-RAG</h1>
 
       <section aria-labelledby="perfil-titulo" className="mb-8 rounded-lg border border-border bg-white p-6">
         <h2 id="perfil-titulo" className="mb-4 text-lg font-medium text-text">
@@ -76,6 +69,6 @@ export function HomePage() {
           </dl>
         )}
       </section>
-    </main>
+    </AppLayout>
   );
 }

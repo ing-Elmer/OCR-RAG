@@ -18,13 +18,13 @@ RUN uv sync --frozen --no-dev --no-editable
 
 # --- runtime: sin uv, sin herramientas de build, usuario no root ---
 FROM python:${PYTHON_VERSION}-slim
-# Tesseract local (OCR) + poppler-utils (utilidades PDF que usa el pipeline de OCR).
+# Tesseract local (OCR). El rasterizado de páginas PDF sin texto nativo lo hace pypdfium2
+# (vía pip, sin dependencias del sistema), no poppler.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-spa \
         tesseract-ocr-eng \
-        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 10001 app
 WORKDIR /app

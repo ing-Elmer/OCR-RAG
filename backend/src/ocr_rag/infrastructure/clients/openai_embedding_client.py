@@ -12,7 +12,13 @@ class OpenAiEmbeddingClient:
         self._cliente = cliente
         self._modelo = modelo
 
-    async def generar_embedding(self, texto: str) -> list[float]:
-        """Genera el vector de embedding del texto usando el modelo configurado."""
-        respuesta = await self._cliente.embeddings.create(model=self._modelo, input=texto)
-        return list(respuesta.data[0].embedding)
+    async def generar_embeddings(self, textos: list[str]) -> list[list[float]]:
+        """Genera, en una sola llamada, el vector de embedding de cada texto de `textos`.
+
+        Conserva el orden de `textos` aunque la API no garantice devolverlos en ese orden.
+        """
+        if not textos:
+            return []
+        respuesta = await self._cliente.embeddings.create(model=self._modelo, input=textos)
+        datos_ordenados = sorted(respuesta.data, key=lambda dato: dato.index)
+        return [list(dato.embedding) for dato in datos_ordenados]

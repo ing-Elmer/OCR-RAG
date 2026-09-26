@@ -17,20 +17,44 @@ os.environ.setdefault("OCR_RAG_CORS_ORIGINS", "http://localhost:5173")
 
 import datetime as dt
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from ocr_rag.api.dependencies import get_auth_service, get_health_service, get_usuario_service
+from ocr_rag.api.dependencies import (
+    get_auth_service,
+    get_consulta_service,
+    get_documento_service,
+    get_health_service,
+    get_usuario_service,
+)
 from ocr_rag.api.main import app
+from ocr_rag.application.background import Tarea
 from ocr_rag.application.services.auth_service import AuthService
+from ocr_rag.application.services.consulta_service import ConsultaService
+from ocr_rag.application.services.documento_service import DocumentoService
 from ocr_rag.application.services.health_service import HealthService
+from ocr_rag.application.services.procesamiento_documento_service import (
+    ProcesamientoDocumentoService,
+)
 from ocr_rag.application.services.usuario_service import UsuarioService
 from ocr_rag.application.validators.auth_validator import AuthValidator
+from ocr_rag.application.validators.consulta_validator import ConsultaValidator
+from ocr_rag.application.validators.documento_validator import DocumentoValidator
 from ocr_rag.application.validators.usuario_validator import UsuarioValidator
 from ocr_rag.core.exceptions import UnauthorizedError
 from ocr_rag.core.schemas.auth import RefreshTokenRegistro
+from ocr_rag.core.schemas.corpus import ArchivoDescargado
+from ocr_rag.core.schemas.documento import (
+    ChunkParaGuardar,
+    ChunkSimilar,
+    DocumentoParaProcesar,
+    DocumentoResponse,
+    EstadoDocumento,
+    PaginaExtraida,
+)
 from ocr_rag.core.schemas.usuario import CurrentUserResponse, UsuarioCredenciales
 from ocr_rag.core.settings import get_settings
 
@@ -73,6 +97,10 @@ class FakeUsuarioRepository:
 
     async def asignar_rol(self, usuario_id: int, rol_codigo: str) -> None:
         return None
+
+    def agregar(self, usuario: CurrentUserResponse) -> None:
+        """Helper de test: agrega otro usuario (p. ej. sin permisos, para probar un 403)."""
+        self._usuarios[usuario.id] = usuario
 
 
 class FakeRefreshTokenRepository:
@@ -167,15 +195,261 @@ class FakeTokenService:
         return int(token.removeprefix(prefijo))
 
 
+@dataclass
+class _DocumentoAlmacenado:
+    """Estado mutable de un documento fake, guardado en `FakeDocumentoRepository`."""
+
+    nombre_archivo: str
+    tipo_contenido: str
+    tamano_bytes: int
+    estado: EstadoDocumento
+    idioma: str | None
+    paginas: int | None
+    error_detalle: str | None
+    created_at: dt.datetime
+    contenido: bytes
+    sha256: str
+    fuente_url: str | None = None
+
+
+class FakeDocumentoRepository:
+    """Implementación en memoria de `DocumentoRepository` (`core.repositories`), para tests."""
+
+    def __init__(self) -> None:
+        self._documentos: dict[int, _DocumentoAlmacenado] = {}
+        self._chunks: dict[int, list[ChunkParaGuardar]] = {}
+        self._siguiente_id = 1
+        # Precargable desde el test: lo que debe devolver `buscar_similares`.
+        self.resultados_similares: list[ChunkSimilar] = []
+
+    async def crear(
+        self,
+        nombre_archivo: str,
+        tipo_contenido: str,
+        tamano_bytes: int,
+        idioma: str,
+        creado_por_id: int,
+        contenido: bytes,
+        sha256: str,
+        fuente_url: str | None = None,
+    ) -> int:
+        documento_id = self._siguiente_id
+        self._siguiente_id += 1
+        self._documentos[documento_id] = _DocumentoAlmacenado(
+            nombre_archivo=nombre_archivo,
+            tipo_contenido=tipo_contenido,
+            tamano_bytes=tamano_bytes,
+            estado="pendiente",
+            idioma=idioma,
+            paginas=None,
+            error_detalle=None,
+            created_at=dt.datetime.now(dt.UTC),
+            contenido=contenido,
+            sha256=sha256,
+            fuente_url=fuente_url,
+        )
+        self._chunks[documento_id] = []
+        return documento_id
+
+    async def obtener(self, documento_id: int) -> DocumentoResponse | None:
+        datos = self._documentos.get(documento_id)
+        if datos is None:
+            return None
+        return DocumentoResponse(
+            id=documento_id,
+            nombre_archivo=datos.nombre_archivo,
+            tipo_contenido=datos.tipo_contenido,
+            tamano_bytes=datos.tamano_bytes,
+            estado=datos.estado,
+            idioma=datos.idioma,
+            paginas=datos.paginas,
+            cantidad_chunks=len(self._chunks.get(documento_id, [])),
+            error_detalle=datos.error_detalle,
+            created_at=datos.created_at,
+            fuente_url=datos.fuente_url,
+        )
+
+    async def obtener_id_por_sha256(self, sha256: str) -> int | None:
+        for documento_id, datos in self._documentos.items():
+            if datos.sha256 == sha256:
+                return documento_id
+        return None
+
+    async def listar(self, limite: int, offset: int) -> tuple[list[DocumentoResponse], int]:
+        ids_ordenados = sorted(
+            self._documentos, key=lambda id_: self._documentos[id_].created_at, reverse=True
+        )
+        pagina_ids = ids_ordenados[offset : offset + limite]
+        documentos: list[DocumentoResponse] = []
+        for id_ in pagina_ids:
+            documento = await self.obtener(id_)
+            if documento is not None:
+                documentos.append(documento)
+        return documentos, len(ids_ordenados)
+
+    async def obtener_ids_procesados(self, documento_ids: list[int]) -> set[int]:
+        return {
+            id_
+            for id_ in documento_ids
+            if id_ in self._documentos and self._documentos[id_].estado == "procesado"
+        }
+
+    async def obtener_para_procesar(self, documento_id: int) -> DocumentoParaProcesar | None:
+        datos = self._documentos.get(documento_id)
+        if datos is None:
+            return None
+        return DocumentoParaProcesar(
+            id=documento_id,
+            idioma=datos.idioma or "",
+            tipo_contenido=datos.tipo_contenido,
+            contenido=datos.contenido,
+        )
+
+    async def marcar_procesando(self, documento_id: int) -> None:
+        self._documentos[documento_id].estado = "procesando"
+
+    async def marcar_error(self, documento_id: int, error_detalle: str) -> None:
+        self._documentos[documento_id].estado = "error"
+        self._documentos[documento_id].error_detalle = error_detalle
+
+    async def guardar_resultado(
+        self, documento_id: int, paginas: int, chunks: list[ChunkParaGuardar]
+    ) -> None:
+        self._chunks[documento_id] = list(chunks)
+        datos = self._documentos[documento_id]
+        datos.estado = "procesado"
+        datos.paginas = paginas
+        datos.error_detalle = None
+
+    async def listar_ids_pendientes_o_procesando(self) -> list[int]:
+        return [
+            id_
+            for id_, datos in self._documentos.items()
+            if datos.estado in ("pendiente", "procesando")
+        ]
+
+    async def buscar_similares(
+        self, embedding: list[float], top_k: int, documento_ids: list[int] | None
+    ) -> list[ChunkSimilar]:
+        resultados = self.resultados_similares
+        if documento_ids is not None:
+            resultados = [r for r in resultados if r.documento_id in documento_ids]
+        return resultados[:top_k]
+
+    def chunks_de(self, documento_id: int) -> list[ChunkParaGuardar]:
+        """Helper de test: chunks guardados para `documento_id`."""
+        return self._chunks.get(documento_id, [])
+
+
+class FakeOcrClient:
+    """Implementación en memoria de `OcrClient` (`core.clients`), para tests."""
+
+    def __init__(self, texto: str = "texto reconocido por ocr") -> None:
+        self.texto = texto
+        self.llamadas: list[tuple[bytes, str]] = []
+
+    async def extraer_texto(self, contenido: bytes, idioma: str) -> str:
+        self.llamadas.append((contenido, idioma))
+        return self.texto
+
+
+class FakeExtractorTexto:
+    """Implementación en memoria de `ExtractorTexto` (`core.clients`), para tests."""
+
+    def __init__(self, paginas: list[PaginaExtraida] | None = None) -> None:
+        pagina_por_defecto = PaginaExtraida(numero=1, texto="Hola mundo. " * 20)
+        self.paginas = paginas if paginas is not None else [pagina_por_defecto]
+        self.llamadas: list[tuple[bytes, str, str]] = []
+
+    async def extraer(
+        self, contenido: bytes, tipo_contenido: str, idioma: str
+    ) -> list[PaginaExtraida]:
+        self.llamadas.append((contenido, tipo_contenido, idioma))
+        return self.paginas
+
+
+class FakeEmbeddingClient:
+    """Implementación en memoria de `EmbeddingClient` (`core.clients`), para tests.
+
+    Devuelve un vector determinístico por cada texto (según su largo), en el mismo orden.
+    """
+
+    def __init__(self, dimensiones: int = 3, *, falla: bool = False) -> None:
+        self.dimensiones = dimensiones
+        self.falla = falla
+        self.lotes_recibidos: list[list[str]] = []
+
+    async def generar_embeddings(self, textos: list[str]) -> list[list[float]]:
+        self.lotes_recibidos.append(list(textos))
+        if self.falla:
+            raise RuntimeError("Falla simulada de la API de embeddings")
+        return [[float(len(texto))] * self.dimensiones for texto in textos]
+
+
+class FakeChatClient:
+    """Implementación en memoria de `ChatClient` (`core.clients`), para tests."""
+
+    def __init__(self, respuesta: str = "Respuesta de prueba [1]") -> None:
+        self.respuesta = respuesta
+        self.llamadas: list[tuple[str, list[str]]] = []
+
+    async def responder(self, pregunta: str, contextos: list[str]) -> str:
+        self.llamadas.append((pregunta, list(contextos)))
+        return self.respuesta
+
+
+class FakeDescargadorHttp:
+    """Implementación en memoria de `DescargadorHttp` (`core.clients`), para tests.
+
+    Por defecto, cualquier url devuelve un PDF mínimo válido. `respuestas` precarga un
+    contenido específico por url; `fallos`, una excepción a lanzar en su lugar (simula una
+    descarga inválida sin tocar la red).
+    """
+
+    def __init__(self) -> None:
+        self.respuestas: dict[str, ArchivoDescargado] = {}
+        self.fallos: dict[str, Exception] = {}
+        self.urls_pedidas: list[str] = []
+
+    async def descargar(self, url: str, limite_bytes: int) -> ArchivoDescargado:
+        self.urls_pedidas.append(url)
+        if url in self.fallos:
+            raise self.fallos[url]
+        if url in self.respuestas:
+            return self.respuestas[url]
+        return ArchivoDescargado(
+            contenido=b"%PDF-1.4 contenido de prueba", tipo_contenido="application/pdf"
+        )
+
+
+class FakeBackgroundTaskQueue:
+    """Implementación en memoria de `TaskEnqueuer` (`application.background`), para tests.
+
+    No ejecuta las tareas encoladas: solo las guarda, para poder inspeccionarlas o correrlas a
+    mano desde el test.
+    """
+
+    def __init__(self) -> None:
+        self.tareas: list[Tarea] = []
+
+    async def encolar(self, tarea: Tarea) -> None:
+        self.tareas.append(tarea)
+
+
 @pytest.fixture
 def usuario_response() -> CurrentUserResponse:
-    """Usuario de prueba con un permiso conocido."""
+    """Usuario de prueba con los permisos del catálogo, para ejercitar `require_permission`."""
     return CurrentUserResponse(
         id=1,
         username="ana",
         nombre_completo="Ana Pérez",
         roles=["ADMIN"],
-        permisos=["DOCUMENTO_VER"],
+        permisos=[
+            "DOCUMENTO_VER",
+            "DOCUMENTOS_VER",
+            "DOCUMENTOS_CARGAR",
+            "CONSULTAS_REALIZAR",
+        ],
     )
 
 
@@ -202,10 +476,24 @@ def fake_refresh_token_repository() -> FakeRefreshTokenRepository:
     return FakeRefreshTokenRepository()
 
 
+@pytest.fixture
+def fake_documento_repository() -> FakeDocumentoRepository:
+    """Repositorio fake de documentos, vacío por defecto."""
+    return FakeDocumentoRepository()
+
+
+@pytest.fixture
+def fake_background_queue() -> FakeBackgroundTaskQueue:
+    """Cola de tareas fake: captura las tareas encoladas sin ejecutarlas."""
+    return FakeBackgroundTaskQueue()
+
+
 @pytest_asyncio.fixture
 async def async_client(
     fake_usuario_repository: FakeUsuarioRepository,
     fake_refresh_token_repository: FakeRefreshTokenRepository,
+    fake_documento_repository: FakeDocumentoRepository,
+    fake_background_queue: FakeBackgroundTaskQueue,
 ) -> AsyncIterator[AsyncClient]:
     """Cliente HTTP async contra la app, con los repositorios reemplazados por fakes."""
     app.dependency_overrides[get_health_service] = lambda: HealthService(FakeHealthRepository())
@@ -216,6 +504,22 @@ async def async_client(
         fake_refresh_token_repository,
         AuthValidator(fake_usuario_repository, fake_refresh_token_repository, FakePasswordHasher()),
         FakeTokenService(),
+        get_settings(),
+    )
+    procesamiento_service = ProcesamientoDocumentoService(
+        fake_documento_repository, FakeExtractorTexto(), FakeEmbeddingClient()
+    )
+    app.dependency_overrides[get_documento_service] = lambda: DocumentoService(
+        fake_documento_repository,
+        DocumentoValidator(fake_documento_repository, get_settings()),
+        procesamiento_service,
+        fake_background_queue,
+    )
+    app.dependency_overrides[get_consulta_service] = lambda: ConsultaService(
+        fake_documento_repository,
+        ConsultaValidator(fake_documento_repository),
+        FakeEmbeddingClient(),
+        FakeChatClient(),
         get_settings(),
     )
     transport = ASGITransport(app=app)

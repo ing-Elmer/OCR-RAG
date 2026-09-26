@@ -6,14 +6,28 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from openai import AsyncOpenAI
 
+from ocr_rag.api.dependencies import (
+    get_documento_repository,
+    get_embedding_client,
+    get_extractor_texto,
+    get_ocr_client,
+    get_procesamiento_service,
+)
 from ocr_rag.api.errors import registrar_manejadores_de_error
-from ocr_rag.api.routers import auth, health, me
-from ocr_rag.application.background import BackgroundTaskQueue
-from ocr_rag.core.settings import get_settings
+from ocr_rag.api.routers import auth, consultas, documentos, health, me
+from ocr_rag.application.background import BackgroundTaskQueue, Tarea
+from ocr_rag.application.services.procesamiento_documento_service import (
+    ProcesamientoDocumentoService,
+)
+from ocr_rag.core.settings import Settings, get_settings
 from ocr_rag.infrastructure.db import ConnectionFactory
 
 logger = logging.getLogger(__name__)
+
+# Timeout explícito para las llamadas a OpenAI (embeddings y chat).
+_TIMEOUT_OPENAI_SEGUNDOS = 60.0
 
 
 def _configurar_logging() -> None:
@@ -34,9 +48,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await connection_factory.abrir("MAIN", settings.db_main_dsn.get_secret_value())
     app.state.connection_factory = connection_factory
 
+    openai_client = AsyncOpenAI(
+        api_key=settings.openai_api_key.get_secret_value(), timeout=_TIMEOUT_OPENAI_SEGUNDOS
+    )
+    app.state.openai_client = openai_client
+
     tareas = BackgroundTaskQueue()
     await tareas.iniciar()
     app.state.tareas = tareas
+
+    await _reencolar_documentos_sin_terminar(connection_factory, openai_client, settings, tareas)
 
     logger.info("OCR-RAG arrancó correctamente")
     try:
@@ -45,6 +66,43 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await tareas.detener()
         await connection_factory.cerrar_todos()
         logger.info("OCR-RAG se detuvo correctamente")
+
+
+async def _reencolar_documentos_sin_terminar(
+    connection_factory: ConnectionFactory,
+    openai_client: AsyncOpenAI,
+    settings: Settings,
+    tareas: BackgroundTaskQueue,
+) -> None:
+    """Reencola el procesamiento de los documentos que quedaron `pendiente` o `procesando`.
+
+    Un reinicio del proceso (deploy, caída) no debe dejarlos colgados: sin esto, quedarían en
+    ese estado para siempre porque nadie vuelve a encolar su procesamiento.
+    """
+    repositorio = get_documento_repository(connection_factory)
+    ocr_client = get_ocr_client()
+    extractor = get_extractor_texto(ocr_client)
+    embedding_client = get_embedding_client(openai_client, settings)
+    procesamiento_service = get_procesamiento_service(repositorio, extractor, embedding_client)
+
+    ids_pendientes = await repositorio.listar_ids_pendientes_o_procesando()
+    for documento_id in ids_pendientes:
+        await tareas.encolar(_crear_tarea_de_procesamiento(procesamiento_service, documento_id))
+    if ids_pendientes:
+        logger.info("Se reencolaron %s documentos sin terminar de procesar", len(ids_pendientes))
+
+
+def _crear_tarea_de_procesamiento(
+    procesamiento_service: ProcesamientoDocumentoService, documento_id: int
+) -> Tarea:
+    """Liga `documento_id` a la tarea en el momento de crearla (evita el late binding de un
+    closure dentro del `for`).
+    """
+
+    async def _tarea() -> None:
+        await procesamiento_service.procesar(documento_id)
+
+    return _tarea
 
 
 def crear_app() -> FastAPI:
@@ -72,6 +130,8 @@ def crear_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(me.router)
+    app.include_router(documentos.router)
+    app.include_router(consultas.router)
 
     return app
 

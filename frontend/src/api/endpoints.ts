@@ -19,4 +19,16 @@ export const endpoints = {
     /** GET /api/me — requiere token. */
     get: '/api/me',
   },
+  documentos: {
+    /** POST /api/documentos — permiso DOCUMENTOS_CARGAR. multipart/form-data (`archivo`, `idioma`). */
+    crear: '/api/documentos',
+    /** GET /api/documentos?limite&offset — permiso DOCUMENTOS_VER. */
+    listar: '/api/documentos',
+    /** GET /api/documentos/{id} — permiso DOCUMENTOS_VER. */
+    obtener: (id: number): string => `/api/documentos/${id}`,
+  },
+  consultas: {
+    /** POST /api/consultas — permiso CONSULTAS_REALIZAR. */
+    crear: '/api/consultas',
+  },
 } as const;

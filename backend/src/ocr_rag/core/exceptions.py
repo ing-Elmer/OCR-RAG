@@ -56,3 +56,12 @@ class ConflictError(DomainError):
     """La operación entra en conflicto con el estado actual del recurso."""
 
     status_code = 409
+
+
+class DescargaInvalidaError(DomainError):
+    """La descarga de un archivo remoto no cumple las reglas de seguridad: protocolo distinto
+    de https (incluidas redirecciones), tamaño mayor al permitido, o contenido que no es un PDF
+    válido. La usa el comando de CLI `cargar-corpus`; nunca se expone por la API.
+    """
+
+    status_code = 400

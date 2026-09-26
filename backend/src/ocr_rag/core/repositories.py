@@ -4,6 +4,12 @@ from datetime import datetime
 from typing import Protocol
 
 from ocr_rag.core.schemas.auth import RefreshTokenRegistro
+from ocr_rag.core.schemas.documento import (
+    ChunkParaGuardar,
+    ChunkSimilar,
+    DocumentoParaProcesar,
+    DocumentoResponse,
+)
 from ocr_rag.core.schemas.usuario import CurrentUserResponse, UsuarioCredenciales
 
 
@@ -74,4 +80,79 @@ class RefreshTokenRepository(Protocol):
 
     async def revocar_todos_de_usuario(self, usuario_id: int) -> None:
         """Revoca todos los refresh tokens activos del usuario (detección de robo)."""
+        ...
+
+
+class DocumentoRepository(Protocol):
+    """Acceso a los documentos, su archivo original y sus chunks (OCR + RAG)."""
+
+    async def crear(
+        self,
+        nombre_archivo: str,
+        tipo_contenido: str,
+        tamano_bytes: int,
+        idioma: str,
+        creado_por_id: int,
+        contenido: bytes,
+        sha256: str,
+        fuente_url: str | None = None,
+    ) -> int:
+        """Crea el documento (estado `pendiente`) y guarda su archivo original, en una única
+        transacción. Devuelve el id creado.
+
+        `fuente_url` es la url de origen cuando el documento se cargó desde una fuente externa
+        (`cli cargar-corpus`); las cargas manuales por la API la dejan en `None`.
+        """
+        ...
+
+    async def obtener(self, documento_id: int) -> DocumentoResponse | None:
+        """Devuelve el documento por id, o `None` si no existe."""
+        ...
+
+    async def obtener_id_por_sha256(self, sha256: str) -> int | None:
+        """Devuelve el id del documento cuyo archivo tiene ese `sha256`, o `None` si no existe.
+
+        Lo usa `cli cargar-corpus` para no cargar dos veces el mismo contenido.
+        """
+        ...
+
+    async def listar(self, limite: int, offset: int) -> tuple[list[DocumentoResponse], int]:
+        """Lista los documentos paginados (más nuevo primero) y el total sin paginar."""
+        ...
+
+    async def obtener_ids_procesados(self, documento_ids: list[int]) -> set[int]:
+        """De `documento_ids`, devuelve el subconjunto que existe y está en estado `procesado`."""
+        ...
+
+    async def obtener_para_procesar(self, documento_id: int) -> DocumentoParaProcesar | None:
+        """Devuelve los datos que necesita el worker (idioma, tipo y contenido del archivo)."""
+        ...
+
+    async def marcar_procesando(self, documento_id: int) -> None:
+        """Marca el documento como `procesando`."""
+        ...
+
+    async def marcar_error(self, documento_id: int, error_detalle: str) -> None:
+        """Marca el documento como `error`, con un mensaje genérico en `error_detalle`."""
+        ...
+
+    async def guardar_resultado(
+        self, documento_id: int, paginas: int, chunks: list[ChunkParaGuardar]
+    ) -> None:
+        """Reemplaza los chunks del documento por `chunks` y lo marca `procesado`, con
+        `paginas` páginas, en una única transacción. Borra los chunks previos primero (el
+        reprocesamiento es idempotente).
+        """
+        ...
+
+    async def listar_ids_pendientes_o_procesando(self) -> list[int]:
+        """Ids de documentos que quedaron sin terminar de procesar (para reencolar al arrancar)."""
+        ...
+
+    async def buscar_similares(
+        self, embedding: list[float], top_k: int, documento_ids: list[int] | None
+    ) -> list[ChunkSimilar]:
+        """Busca los `top_k` chunks más similares a `embedding`, entre los documentos
+        `procesado` (y, si se indica, solo entre `documento_ids`).
+        """
         ...

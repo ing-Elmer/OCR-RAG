@@ -37,6 +37,9 @@ class Settings(BaseSettings):
 
     tesseract_langs: str = "spa+eng"
 
+    max_upload_mb: int = 20
+    rag_similitud_minima: float = 0.2
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _dividir_origenes_cors(cls, valor: object) -> object:

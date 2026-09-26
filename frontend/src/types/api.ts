@@ -9,11 +9,15 @@ export type ApiStatus = 'Success' | 'Created' | 'Error';
 /** Errores de validación por campo: `{ "campo": ["mensaje"] }`. */
 export type ApiFieldErrors = Record<string, string[]>;
 
-/** Envelope estándar que envuelve toda respuesta de la API. */
-export interface ApiEnvelope<T> {
+/**
+ * Envelope estándar que envuelve toda respuesta de la API.
+ * `M` es el tipo de `meta` (p. ej. datos de paginación); por defecto `unknown`
+ * para los endpoints que no lo tipan explícitamente.
+ */
+export interface ApiEnvelope<T, M = unknown> {
   status: ApiStatus;
   message: string;
   data: T | null;
   errors: ApiFieldErrors | null;
-  meta: unknown | null;
+  meta: M | null;
 }

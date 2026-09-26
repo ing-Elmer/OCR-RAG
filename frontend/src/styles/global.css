@@ -14,6 +14,10 @@
   --color-border: #e2e8f0;
   --color-danger: #b91c1c;
   --color-danger-surface: #fef2f2;
+  --color-success: #15803d;
+  --color-success-surface: #f0fdf4;
+  --color-warning: #b45309;
+  --color-warning-surface: #fffbeb;
 
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;

@@ -26,9 +26,9 @@ const MENSAJE_SIN_DATOS = 'La respuesta del servidor no incluyó datos.';
  * Ejecuta la request y devuelve el envelope ya validado (status distinto de
  * `Error`). Centraliza la traducción de errores de red y HTTP a `ApiError`.
  */
-async function enviar<T>(client: AxiosInstance, config: AxiosRequestConfig): Promise<ApiEnvelope<T>> {
+async function enviar<T, M = unknown>(client: AxiosInstance, config: AxiosRequestConfig): Promise<ApiEnvelope<T, M>> {
   try {
-    const response = await client.request<ApiEnvelope<T>>(config);
+    const response = await client.request<ApiEnvelope<T, M>>(config);
     const envelope = response.data;
 
     if (envelope.status === 'Error') {
@@ -71,4 +71,28 @@ export async function request<T>(client: AxiosInstance, config: AxiosRequestConf
  */
 export async function requestSinDatos(client: AxiosInstance, config: AxiosRequestConfig): Promise<void> {
   await enviar<null>(client, config);
+}
+
+/** Resultado de `requestConMeta<T, M>()`: datos más metadatos (p. ej. paginación). */
+export interface ResultadoConMeta<T, M> {
+  data: T;
+  meta: M;
+}
+
+/**
+ * Igual que `request<T>()`, pero además devuelve `meta` (p. ej. `{ total, limite, offset }`
+ * de un listado paginado). Reutiliza el mismo manejo de errores de `enviar()`.
+ */
+export async function requestConMeta<T, M>(
+  client: AxiosInstance,
+  config: AxiosRequestConfig,
+): Promise<ResultadoConMeta<T, M>> {
+  const envelope = await enviar<T, M>(client, config);
+  if (envelope.data === null) {
+    throw new ApiError(MENSAJE_SIN_DATOS, envelope.status, envelope.errors);
+  }
+  if (envelope.meta === null) {
+    throw new ApiError(MENSAJE_SIN_DATOS, envelope.status, envelope.errors);
+  }
+  return { data: envelope.data, meta: envelope.meta };
 }

@@ -8,10 +8,23 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
 Tarea = Callable[[], Awaitable[None]]
+
+
+class TaskEnqueuer(Protocol):
+    """Lo único que necesita un Service para encolar trabajo: encolar una tarea.
+
+    Permite tipar el `cola` de un Service sin acoplarlo a `BackgroundTaskQueue`, y reemplazarlo
+    en los tests por un fake que solo captura las tareas encoladas.
+    """
+
+    async def encolar(self, tarea: Tarea) -> None:
+        """Agrega `tarea` a la cola."""
+        ...
 
 
 class BackgroundTaskQueue:
