@@ -1,0 +1,16 @@
+# Config-as-code de Railway para el servicio del backend.
+# En un monorepo Railway NO busca este archivo dentro del Root Directory: en el servicio hay que
+# poner Settings > Config-as-code > "/backend/railway.toml".
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+# Solo redeploya si cambió el backend.
+watchPatterns = ["/backend/**"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# Sin preDeployCommand: los scripts SQL los ejecuta una persona (regla sql-migraciones).

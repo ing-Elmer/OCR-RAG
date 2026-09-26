@@ -1,0 +1,6 @@
+# Quién revisa qué. Reemplazar por usuarios o equipos reales de GitHub.
+*                    @<org>/<equipo>
+/backend/            @<org>/<equipo-backend>
+/frontend/           @<org>/<equipo-frontend>
+/backend/db/         @<org>/<responsable-base-de-datos>
+/.github/            @<org>/<responsable-ci>
