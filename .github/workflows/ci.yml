@@ -1,0 +1,86 @@
+# CI del proyecto: corre los mismos pasos que /verificar.
+# Railway ("Wait for CI") y Vercel ("Deployment Checks") esperan a que estos dos jobs pasen
+# antes de publicar. Si cambiás el nombre de un job, actualizalo también en Railway, Vercel y
+# en la protección de la rama.
+# Rama base del proyecto: Develop. Rutas: backend/ y frontend/
+
+name: CI
+
+on:
+  pull_request:
+    branches: [Develop]
+  push:
+    # Railway exige un disparador en push a la rama que despliega para usar "Wait for CI".
+    branches: [Develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-backend:
+    name: ci-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: backend
+          enable-cache: true
+
+      - name: Instalar Python y dependencias (desde uv.lock)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Formato
+        run: uv run ruff format --check
+
+      - name: Tipos
+        run: uv run mypy
+
+      - name: Contrato de capas
+        run: uv run lint-imports
+
+      - name: Tests
+        run: uv run pytest
+
+  ci-frontend:
+    name: ci-frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias (desde package-lock.json)
+        run: npm ci
+
+      - name: Build (incluye tsc)
+        run: npm run build
+
+      - name: Tests
+        run: npm run test
