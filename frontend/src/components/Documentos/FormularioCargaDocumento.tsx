@@ -3,7 +3,9 @@ import { ApiError } from '@/services/ApiClient';
 import { cargarDocumento } from '@/services/DocumentoService';
 import { toFormErrors, type FormErrors } from '@/components/ui/helpers/toFormErrors';
 import { validarArchivoDocumento } from '@/utils/validarArchivoDocumento';
+import { OPCIONES_TIPO_DOCUMENTO } from '@/utils/tipoDocumento';
 import { Button } from '@/components/ui/Button';
+import type { TipoDocumento } from '@/types/documento';
 
 const MENSAJE_ERROR_GENERICO = 'No se pudo cargar el documento. Intentá de nuevo.';
 
@@ -12,6 +14,9 @@ const OPCIONES_IDIOMA = [
   { valor: 'spa', etiqueta: 'Español' },
   { valor: 'eng', etiqueta: 'Inglés' },
 ];
+
+/** Valor del select que indica que el tipo de documento no se envía: lo clasifica la IA al procesar. */
+const DETECCION_AUTOMATICA = '';
 
 interface FormularioCargaDocumentoProps {
   /** Se llama cuando la carga terminó bien, para refrescar el listado. */
@@ -22,9 +27,11 @@ interface FormularioCargaDocumentoProps {
 export function FormularioCargaDocumento({ onCargado }: FormularioCargaDocumentoProps) {
   const idArchivo = useId();
   const idIdioma = useId();
+  const idTipoDocumento = useId();
   const inputArchivoRef = useRef<HTMLInputElement>(null);
 
   const [idioma, setIdioma] = useState(OPCIONES_IDIOMA[0].valor);
+  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento | typeof DETECCION_AUTOMATICA>(DETECCION_AUTOMATICA);
   const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
   const [mensajeError, setMensajeError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,10 +55,15 @@ export function FormularioCargaDocumento({ onCargado }: FormularioCargaDocumento
 
     setIsSubmitting(true);
     try {
-      await cargarDocumento({ archivo, idioma });
+      await cargarDocumento({
+        archivo,
+        idioma,
+        tipoDocumento: tipoDocumento === DETECCION_AUTOMATICA ? undefined : tipoDocumento,
+      });
       if (inputArchivoRef.current) {
         inputArchivoRef.current.value = '';
       }
+      setTipoDocumento(DETECCION_AUTOMATICA);
       onCargado();
     } catch (error) {
       if (error instanceof ApiError) {
@@ -124,6 +136,32 @@ export function FormularioCargaDocumento({ onCargado }: FormularioCargaDocumento
         {fieldErrors.idioma && (
           <p role="alert" className="mt-1 text-sm text-danger">
             {fieldErrors.idioma}
+          </p>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <label htmlFor={idTipoDocumento} className="mb-1 block text-sm font-medium text-text">
+          Tipo de documento
+        </label>
+        <select
+          id={idTipoDocumento}
+          name="tipoDocumento"
+          value={tipoDocumento}
+          onChange={(event) => setTipoDocumento(event.target.value as TipoDocumento | typeof DETECCION_AUTOMATICA)}
+          disabled={isSubmitting}
+          className="w-full rounded-md border border-border px-3 py-2 text-sm text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <option value={DETECCION_AUTOMATICA}>Detectar automáticamente</option>
+          {OPCIONES_TIPO_DOCUMENTO.map((opcion) => (
+            <option key={opcion.valor} value={opcion.valor}>
+              {opcion.etiqueta}
+            </option>
+          ))}
+        </select>
+        {fieldErrors.tipoDocumento && (
+          <p role="alert" className="mt-1 text-sm text-danger">
+            {fieldErrors.tipoDocumento}
           </p>
         )}
       </div>

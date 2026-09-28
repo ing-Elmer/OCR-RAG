@@ -22,7 +22,13 @@ from ocr_rag.application.validators.auth_validator import AuthValidator
 from ocr_rag.application.validators.consulta_validator import ConsultaValidator
 from ocr_rag.application.validators.documento_validator import DocumentoValidator
 from ocr_rag.application.validators.usuario_validator import UsuarioValidator
-from ocr_rag.core.clients import ChatClient, EmbeddingClient, ExtractorTexto, OcrClient
+from ocr_rag.core.clients import (
+    ChatClient,
+    ClasificadorDocumento,
+    EmbeddingClient,
+    ExtractorTexto,
+    OcrClient,
+)
 from ocr_rag.core.repositories import (
     DocumentoRepository,
     HealthRepository,
@@ -32,6 +38,9 @@ from ocr_rag.core.repositories import (
 from ocr_rag.core.security import PasswordHasher, TokenService
 from ocr_rag.core.settings import Settings, get_settings
 from ocr_rag.infrastructure.clients.openai_chat_client import OpenAiChatClient
+from ocr_rag.infrastructure.clients.openai_clasificador_documento_client import (
+    OpenAiClasificadorDocumentoClient,
+)
 from ocr_rag.infrastructure.clients.openai_embedding_client import OpenAiEmbeddingClient
 from ocr_rag.infrastructure.clients.pdf_ocr_extractor_client import PdfOcrExtractorClient
 from ocr_rag.infrastructure.clients.tesseract_ocr_client import TesseractOcrClient
@@ -158,6 +167,14 @@ def get_chat_client(
     return OpenAiChatClient(openai_client, settings.openai_chat_model)
 
 
+def get_clasificador_documento(
+    openai_client: Annotated[AsyncOpenAI, Depends(get_openai_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ClasificadorDocumento:
+    """Provee la implementación concreta de `ClasificadorDocumento`."""
+    return OpenAiClasificadorDocumentoClient(openai_client, settings.openai_chat_model)
+
+
 def get_ocr_client() -> OcrClient:
     """Provee la implementación concreta de `OcrClient`."""
     return TesseractOcrClient()
@@ -189,9 +206,10 @@ def get_procesamiento_service(
     repositorio: Annotated[DocumentoRepository, Depends(get_documento_repository)],
     extractor: Annotated[ExtractorTexto, Depends(get_extractor_texto)],
     embedding_client: Annotated[EmbeddingClient, Depends(get_embedding_client)],
+    clasificador: Annotated[ClasificadorDocumento, Depends(get_clasificador_documento)],
 ) -> ProcesamientoDocumentoService:
     """Arma el worker de procesamiento OCR + embeddings de un documento."""
-    return ProcesamientoDocumentoService(repositorio, extractor, embedding_client)
+    return ProcesamientoDocumentoService(repositorio, extractor, embedding_client, clasificador)
 
 
 def get_documento_service(

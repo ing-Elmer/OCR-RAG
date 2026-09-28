@@ -16,6 +16,8 @@ function crearDocumento(overrides: Partial<Documento> = {}): Documento {
     paginas: null,
     cantidadChunks: 0,
     errorDetalle: null,
+    tipoDocumento: 'otro',
+    norma: null,
     createdAt: '2026-01-01T00:00:00Z',
     ...overrides,
   };

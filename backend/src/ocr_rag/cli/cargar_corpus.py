@@ -27,6 +27,9 @@ from ocr_rag.core.schemas.corpus import FuenteCorpus, ManifiestoCorpus
 from ocr_rag.core.schemas.usuario import UsuarioCredenciales
 from ocr_rag.core.settings import get_settings
 from ocr_rag.infrastructure.clients.http_descargador_client import UrllibDescargadorHttp
+from ocr_rag.infrastructure.clients.openai_clasificador_documento_client import (
+    OpenAiClasificadorDocumentoClient,
+)
 from ocr_rag.infrastructure.clients.openai_embedding_client import OpenAiEmbeddingClient
 from ocr_rag.infrastructure.clients.pdf_ocr_extractor_client import PdfOcrExtractorClient
 from ocr_rag.infrastructure.clients.tesseract_ocr_client import TesseractOcrClient
@@ -188,6 +191,9 @@ async def _cargar_corpus(argv: list[str]) -> int:
             documento_repositorio,
             PdfOcrExtractorClient(TesseractOcrClient()),
             OpenAiEmbeddingClient(openai_client, settings.openai_embedding_model),
+            # El manifiesto siempre trae `tipo`, así que la carga masiva nunca clasifica: este
+            # cliente solo existe para satisfacer el constructor del worker.
+            OpenAiClasificadorDocumentoClient(openai_client, settings.openai_chat_model),
         )
         # `BackgroundTaskQueue` sin `iniciar()`: el CLI no tiene worker, así que `cargar_de_fuente`
         # + `procesar_ahora` nunca la usan; la exige el constructor de `DocumentoService`.

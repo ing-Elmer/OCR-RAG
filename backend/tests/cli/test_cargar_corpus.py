@@ -15,6 +15,7 @@ from ocr_rag.core.schemas.usuario import CurrentUserResponse, UsuarioCredenciale
 from ocr_rag.core.settings import get_settings
 from tests.conftest import (
     FakeBackgroundTaskQueue,
+    FakeClasificadorDocumento,
     FakeDescargadorHttp,
     FakeDocumentoRepository,
     FakeEmbeddingClient,
@@ -39,7 +40,7 @@ def _crear_corpus_service(
 ) -> CorpusService:
     validador = DocumentoValidator(repositorio, get_settings())
     procesador = ProcesamientoDocumentoService(
-        repositorio, FakeExtractorTexto(), FakeEmbeddingClient()
+        repositorio, FakeExtractorTexto(), FakeEmbeddingClient(), FakeClasificadorDocumento()
     )
     documento_service = DocumentoService(
         repositorio, validador, procesador, FakeBackgroundTaskQueue()

@@ -18,6 +18,8 @@
   --color-success-surface: #f0fdf4;
   --color-warning: #b45309;
   --color-warning-surface: #fffbeb;
+  --color-accent: #7c3aed;
+  --color-accent-surface: #f5f3ff;
 
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;

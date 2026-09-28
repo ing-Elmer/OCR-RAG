@@ -19,7 +19,20 @@ describe('ConsultaService', () => {
   it('realizarConsulta envía la pregunta, los documentos y el topK en el body', async () => {
     const resultado: ResultadoConsulta = {
       respuesta: 'Respuesta generada [1]',
-      fuentes: [{ documentoId: 1, nombreArchivo: 'a.pdf', fuenteUrl: null, orden: 1, pagina: 2, fragmento: 'texto relevante', similitud: 0.87 }],
+      fuentes: [
+        {
+          documentoId: 1,
+          nombreArchivo: 'a.pdf',
+          fuenteUrl: null,
+          orden: 1,
+          pagina: 2,
+          norma: null,
+          articulo: null,
+          fragmento: 'texto relevante',
+          similitud: 0.87,
+          tipoDocumento: 'otro',
+        },
+      ],
     };
     mock.onPost(endpoints.consultas.crear).reply(200, { status: 'Success', message: 'ok', data: resultado, errors: null, meta: null });
 
@@ -41,5 +54,21 @@ describe('ConsultaService', () => {
 
     expect(respuesta).toEqual(resultado);
     expect(JSON.parse(mock.history.post[0].data as string)).toEqual({ pregunta: 'Pregunta mínima' });
+  });
+
+  it('realizarConsulta envía los tiposDocumento cuando se filtra por categoría', async () => {
+    const resultado: ResultadoConsulta = { respuesta: 'Según la normativa...', fuentes: [] };
+    mock.onPost(endpoints.consultas.crear).reply(200, { status: 'Success', message: 'ok', data: resultado, errors: null, meta: null });
+
+    const respuesta = await realizarConsulta({
+      pregunta: '¿Qué exige el CAUCA?',
+      tiposDocumento: ['normativa', 'aduanero'],
+    });
+
+    expect(respuesta).toEqual(resultado);
+    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({
+      pregunta: '¿Qué exige el CAUCA?',
+      tiposDocumento: ['normativa', 'aduanero'],
+    });
   });
 });

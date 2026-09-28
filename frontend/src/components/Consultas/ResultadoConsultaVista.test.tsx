@@ -10,8 +10,11 @@ function fuente(parcial: Partial<FuenteConsulta>): FuenteConsulta {
     fuenteUrl: null,
     orden: 1,
     pagina: null,
+    norma: null,
+    articulo: null,
     fragmento: 'texto',
     similitud: 0.8,
+    tipoDocumento: 'otro',
     ...parcial,
   };
 }
@@ -54,5 +57,50 @@ describe('ResultadoConsultaVista', () => {
     render(<ResultadoConsultaVista resultado={resultado} />);
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('usa la norma en la cabecera, con artículo y página, cuando la fuente la tiene', () => {
+    const resultado: ResultadoConsulta = {
+      respuesta: 'Según [1]…',
+      fuentes: [
+        fuente({
+          nombreArchivo: 'cauca.pdf',
+          norma: 'CAUCA',
+          articulo: '104',
+          pagina: 12,
+          tipoDocumento: 'normativa',
+        }),
+      ],
+    };
+
+    render(<ResultadoConsultaVista resultado={resultado} />);
+
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('[1] CAUCA · Art. 104 · pág. 12');
+    expect(items[0]).not.toHaveTextContent('cauca.pdf');
+  });
+
+  it('usa el nombre de archivo en la cabecera cuando la fuente no tiene norma', () => {
+    const resultado: ResultadoConsulta = {
+      respuesta: 'Según [1]…',
+      fuentes: [fuente({ nombreArchivo: 'manifiesto.pdf', pagina: 3 })],
+    };
+
+    render(<ResultadoConsultaVista resultado={resultado} />);
+
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('[1] manifiesto.pdf · pág. 3');
+  });
+
+  it('el link envuelve la norma cuando hay fuenteUrl y norma a la vez', () => {
+    const resultado: ResultadoConsulta = {
+      respuesta: 'Según [1]…',
+      fuentes: [fuente({ norma: 'CAUCA', fuenteUrl: 'https://www.sieca.int/cauca.pdf' })],
+    };
+
+    render(<ResultadoConsultaVista resultado={resultado} />);
+
+    const link = screen.getByRole('link', { name: 'CAUCA' });
+    expect(link).toHaveAttribute('href', 'https://www.sieca.int/cauca.pdf');
   });
 });

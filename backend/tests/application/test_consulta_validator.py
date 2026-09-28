@@ -17,8 +17,11 @@ async def _crear_documento_procesado(repositorio: FakeDocumentoRepository) -> in
         contenido=b"contenido",
         sha256="a" * 64,
     )
-    await repositorio.marcar_procesando(documento_id)
-    await repositorio.guardar_resultado(documento_id, paginas=1, chunks=[])
+    tomado = await repositorio.tomar_para_procesar(documento_id)
+    assert tomado is not None
+    await repositorio.guardar_resultado(
+        documento_id, paginas=1, chunks=[], version_procesamiento=tomado.version_procesamiento
+    )
     return documento_id
 
 

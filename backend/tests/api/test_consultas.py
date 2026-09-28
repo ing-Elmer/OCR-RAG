@@ -91,6 +91,34 @@ async def test_realizar_consulta_sin_token_devuelve_401(async_client: AsyncClien
     assert respuesta.status_code == 401
 
 
+async def test_realizar_consulta_top_k_mayor_al_maximo_devuelve_400(
+    async_client: AsyncClient,
+) -> None:
+    token = _crear_token(1)
+
+    respuesta = await async_client.post(
+        "/api/consultas",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"pregunta": "¿Qué dice el documento?", "topK": 21},
+    )
+
+    assert respuesta.status_code == 400
+
+
+async def test_realizar_consulta_con_tipos_documento_invalido_devuelve_400(
+    async_client: AsyncClient,
+) -> None:
+    token = _crear_token(1)
+
+    respuesta = await async_client.post(
+        "/api/consultas",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"pregunta": "¿Qué dice el documento?", "tiposDocumento": ["factura"]},
+    )
+
+    assert respuesta.status_code == 400
+
+
 async def test_realizar_consulta_con_documento_procesado_devuelve_200(
     async_client: AsyncClient, fake_documento_repository: FakeDocumentoRepository
 ) -> None:
@@ -103,8 +131,11 @@ async def test_realizar_consulta_con_documento_procesado_devuelve_200(
         contenido=b"contenido",
         sha256="a" * 64,
     )
-    await fake_documento_repository.marcar_procesando(documento_id)
-    await fake_documento_repository.guardar_resultado(documento_id, paginas=1, chunks=[])
+    tomado = await fake_documento_repository.tomar_para_procesar(documento_id)
+    assert tomado is not None
+    await fake_documento_repository.guardar_resultado(
+        documento_id, paginas=1, chunks=[], version_procesamiento=tomado.version_procesamiento
+    )
     token = _crear_token(1)
 
     respuesta = await async_client.post(

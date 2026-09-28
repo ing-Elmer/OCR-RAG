@@ -10,6 +10,7 @@ import { useDocumentos } from '@/hooks/useDocumentos';
 /** Pantalla de Documentos: carga (si hay permiso) y listado paginado con estado en vivo. */
 export function DocumentosPage() {
   const { hasPermission } = useUser();
+  const puedeCargar = hasPermission('DOCUMENTOS_CARGAR');
   const {
     data,
     isLoading,
@@ -31,7 +32,7 @@ export function DocumentosPage() {
     <AppLayout>
       <h1 className="mb-6 text-xl font-semibold text-text">Documentos</h1>
 
-      {hasPermission('DOCUMENTOS_CARGAR') && <FormularioCargaDocumento onCargado={reload} />}
+      {puedeCargar && <FormularioCargaDocumento onCargado={reload} />}
 
       <section aria-labelledby="listado-documentos-titulo" className="rounded-lg border border-border bg-white p-6">
         <h2 id="listado-documentos-titulo" className="mb-4 text-lg font-medium text-text">
@@ -42,7 +43,7 @@ export function DocumentosPage() {
         {!isLoading && error && <ErrorState message={error} onRetry={reload} />}
         {!error && data && (
           <>
-            <TablaDocumentos documentos={data.documentos} />
+            <TablaDocumentos documentos={data.documentos} puedeEditar={puedeCargar} onActualizado={reload} />
             {total > 0 && (
               <div className="mt-4 flex items-center justify-between text-sm text-muted">
                 <span>

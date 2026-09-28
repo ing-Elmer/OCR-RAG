@@ -1,7 +1,7 @@
 ---
 description: Segunda opinión — Codex revisa los cambios en solo lectura y Claude consolida sus hallazgos con los propios
 argument-hint: [rama base]  (vacío = cambios sin commitear)
-allowed-tools: Read, Glob, Grep, Bash(git diff*), Bash(git status*), Bash(git log*), Bash(codex review*), Bash(codex --version*)
+allowed-tools: Read, Glob, Grep, Bash(git diff*), Bash(git status*), Bash(git log*), Bash(codex exec*), Bash(codex --version*)
 ---
 
 Estado actual:
@@ -11,14 +11,26 @@ Versión de Codex:
 !`codex --version`
 
 ## 1. Revisión de Codex (solo lectura)
-`codex review` nunca modifica archivos. Ejecutalo desde la raíz del repo, en background y con
-un timeout amplio (puede tardar varios minutos), guardando la salida en el scratchpad de la
-sesión y **nunca dentro del repo**:
+Ejecutá la revisión desde la raíz del repo, en background y con un timeout amplio (puede
+tardar varios minutos). Guardá el prompt y la salida en el scratchpad de la sesión, **nunca
+dentro del repo**.
 
-- Sin argumento → `codex review --uncommitted "<instrucciones>"`
-- Con rama base (`$ARGUMENTS`) → `codex review --base $ARGUMENTS "<instrucciones>"`
+**Importante:** `codex review --uncommitted` y `codex review --base` **no aceptan
+instrucciones personalizadas** (Codex 0.157: "the argument '--uncommitted' cannot be used
+with '[PROMPT]'"). Sin las instrucciones, Codex revisa sin conocer el estándar. Por eso se
+usa `codex exec` en sandbox de solo lectura, con el prompt por stdin:
 
-`<instrucciones>` (Codex no lee `CLAUDE.md` por su cuenta, así que se lo indicamos):
+```
+codex exec -s read-only --ephemeral -C <raíz del repo> -o <scratchpad>/codex-review.md - < <scratchpad>/codex-prompt-review.md
+```
+
+El prompt le indica qué diff revisar:
+- Sin argumento → los cambios sin commitear: `git diff HEAD` más los archivos nuevos
+  (`git status --porcelain`, líneas `??`).
+- Con rama base (`$ARGUMENTS`) → `git diff $ARGUMENTS...HEAD`.
+
+Después, las instrucciones de revisión. Codex no lee `CLAUDE.md` por su cuenta, así que se lo
+indicamos:
 
 > Revisá estos cambios contra el estándar del proyecto. Antes de opinar, leé la sección
 > "Perfil del proyecto" y "Excepciones al estándar" de CLAUDE.md, y las reglas en

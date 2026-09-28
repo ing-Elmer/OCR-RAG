@@ -23,5 +23,7 @@ async def realizar_consulta(
     service: Annotated[ConsultaService, Depends(get_consulta_service)],
 ) -> ApiResponse[ConsultaResponse]:
     """Responde `body.pregunta` con la información más relevante del corpus indexado."""
-    resultado = await service.consultar(body.pregunta, body.documento_ids, body.top_k)
+    resultado = await service.consultar(
+        body.pregunta, body.documento_ids, body.top_k, body.tipos_documento
+    )
     return ApiResponse[ConsultaResponse].ok("Consulta respondida", resultado)

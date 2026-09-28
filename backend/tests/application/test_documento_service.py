@@ -2,14 +2,19 @@
 
 import hashlib
 
+import pytest
+
 from ocr_rag.application.services.documento_service import DocumentoService
 from ocr_rag.application.services.procesamiento_documento_service import (
     ProcesamientoDocumentoService,
 )
 from ocr_rag.application.validators.documento_validator import DocumentoValidator
+from ocr_rag.core.exceptions import NotFoundError
+from ocr_rag.core.schemas.documento import DocumentoActualizacionRequest
 from ocr_rag.core.settings import get_settings
 from tests.conftest import (
     FakeBackgroundTaskQueue,
+    FakeClasificadorDocumento,
     FakeDocumentoRepository,
     FakeEmbeddingClient,
     FakeExtractorTexto,
@@ -17,10 +22,15 @@ from tests.conftest import (
 
 
 def _crear_service(
-    repositorio: FakeDocumentoRepository, cola: FakeBackgroundTaskQueue
+    repositorio: FakeDocumentoRepository,
+    cola: FakeBackgroundTaskQueue,
+    clasificador: FakeClasificadorDocumento | None = None,
 ) -> DocumentoService:
     procesador = ProcesamientoDocumentoService(
-        repositorio, FakeExtractorTexto(), FakeEmbeddingClient()
+        repositorio,
+        FakeExtractorTexto(),
+        FakeEmbeddingClient(),
+        clasificador or FakeClasificadorDocumento(),
     )
     return DocumentoService(
         repositorio, DocumentoValidator(repositorio, get_settings()), procesador, cola
@@ -79,10 +89,14 @@ async def test_cargar_de_fuente_guarda_con_fuente_url_y_no_encola_nada() -> None
         idioma=None,
         creado_por_id=1,
         fuente_url="https://example.org/cauca.pdf",
+        tipo_documento="normativa",
+        norma="CAUCA IV",
     )
 
     assert documento.fuente_url == "https://example.org/cauca.pdf"
     assert documento.estado == "pendiente"
+    assert documento.tipo_documento == "normativa"
+    assert documento.norma == "CAUCA IV"
     assert cola.tareas == []
 
 
@@ -97,6 +111,7 @@ async def test_procesar_ahora_ejecuta_el_pipeline_en_el_proceso_actual() -> None
         idioma=None,
         creado_por_id=1,
         fuente_url="https://example.org/cauca.pdf",
+        tipo_documento="normativa",
     )
 
     await service.procesar_ahora(documento.id)
@@ -161,3 +176,186 @@ async def test_listar_devuelve_los_documentos_paginados_y_el_total() -> None:
 
     assert total == 3
     assert len(documentos) == 2
+
+
+async def test_cargar_sin_tipo_documento_lo_clasifica_al_procesar() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    clasificador = FakeClasificadorDocumento(tipo="aduanero")
+    service = _crear_service(repositorio, cola, clasificador)
+
+    documento = await service.cargar(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+    )
+    assert documento.tipo_documento == "otro"
+
+    await cola.tareas[0]()
+
+    procesado = await repositorio.obtener(documento.id)
+    assert procesado is not None
+    assert procesado.tipo_documento == "aduanero"
+    assert len(clasificador.llamadas) == 1
+
+
+async def test_cargar_con_tipo_documento_no_llama_al_clasificador() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    clasificador = FakeClasificadorDocumento(tipo="aduanero")
+    service = _crear_service(repositorio, cola, clasificador)
+
+    documento = await service.cargar(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+        tipo_documento="contrato",
+    )
+    assert documento.tipo_documento == "contrato"
+
+    await cola.tareas[0]()
+
+    procesado = await repositorio.obtener(documento.id)
+    assert procesado is not None
+    assert procesado.tipo_documento == "contrato"
+    assert clasificador.llamadas == []
+
+
+async def test_actualizar_documento_inexistente_lanza_not_found() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    service = _crear_service(repositorio, cola)
+
+    with pytest.raises(NotFoundError):
+        await service.actualizar(
+            999, DocumentoActualizacionRequest.model_validate({"tipoDocumento": "contrato"})
+        )
+
+
+async def test_actualizar_tipo_y_norma_los_actualiza_sin_reencolar() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    service = _crear_service(repositorio, cola)
+    documento = await service.cargar_de_fuente(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+        fuente_url="https://example.org/a.pdf",
+        tipo_documento="normativa",
+        norma="CAUCA IV",
+    )
+
+    actualizado = await service.actualizar(
+        documento.id, DocumentoActualizacionRequest.model_validate({"norma": "RECAUCA IV"})
+    )
+
+    assert actualizado.tipo_documento == "normativa"
+    assert actualizado.norma == "RECAUCA IV"
+    # El tipo no cambió (sigue siendo "normativa"): no hace falta reencolar el procesamiento.
+    assert cola.tareas == []
+
+
+async def test_actualizar_norma_null_la_limpia() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    service = _crear_service(repositorio, cola)
+    documento = await service.cargar_de_fuente(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+        fuente_url="https://example.org/a.pdf",
+        tipo_documento="normativa",
+        norma="CAUCA IV",
+    )
+
+    actualizado = await service.actualizar(
+        documento.id, DocumentoActualizacionRequest.model_validate({"norma": None})
+    )
+
+    assert actualizado.norma is None
+
+
+async def test_actualizar_tipo_a_normativa_reencola_el_procesamiento() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    service = _crear_service(repositorio, cola)
+    documento = await service.cargar(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+        tipo_documento="otro",
+    )
+    cola.tareas.clear()
+    version_inicial = repositorio.version_de(documento.id)
+
+    actualizado = await service.actualizar(
+        documento.id, DocumentoActualizacionRequest.model_validate({"tipoDocumento": "normativa"})
+    )
+
+    assert len(cola.tareas) == 1
+    # Sube la versión y deja el documento "pendiente" (aunque ya estuviera "procesado"), para
+    # que el reprocesamiento que se acaba de encolar gane sobre cualquier resultado en vuelo.
+    assert repositorio.version_de(documento.id) == version_inicial + 1
+    assert repositorio.clasificacion_pendiente_de(documento.id) is False
+    assert actualizado.estado == "pendiente"
+
+
+async def test_actualizar_tipo_desde_normativa_reencola_el_procesamiento() -> None:
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    service = _crear_service(repositorio, cola)
+    documento = await service.cargar_de_fuente(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+        fuente_url="https://example.org/a.pdf",
+        tipo_documento="normativa",
+    )
+    version_inicial = repositorio.version_de(documento.id)
+
+    await service.actualizar(
+        documento.id, DocumentoActualizacionRequest.model_validate({"tipoDocumento": "contrato"})
+    )
+
+    assert len(cola.tareas) == 1
+    assert repositorio.version_de(documento.id) == version_inicial + 1
+
+
+async def test_actualizar_tipo_sin_pasar_por_normativa_no_reencola_pero_limpia_clasificacion_pendiente() -> (  # noqa: E501
+    None
+):
+    repositorio = FakeDocumentoRepository()
+    cola = FakeBackgroundTaskQueue()
+    service = _crear_service(repositorio, cola)
+    documento = await service.cargar(
+        nombre_archivo="a.pdf",
+        tipo_contenido="application/pdf",
+        contenido=b"contenido",
+        idioma=None,
+        creado_por_id=1,
+        tipo_documento="contrato",
+    )
+    cola.tareas.clear()
+    version_inicial = repositorio.version_de(documento.id)
+
+    await service.actualizar(
+        documento.id, DocumentoActualizacionRequest.model_validate({"tipoDocumento": "aduanero"})
+    )
+
+    assert cola.tareas == []
+    # No cruza la frontera de "normativa": no reencola ni sube la versión.
+    assert repositorio.version_de(documento.id) == version_inicial
+    # Pero una edición manual del tipo siempre limpia la clasificación pendiente.
+    assert repositorio.clasificacion_pendiente_de(documento.id) is False

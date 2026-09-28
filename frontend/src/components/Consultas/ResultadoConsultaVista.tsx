@@ -23,32 +23,34 @@ export function ResultadoConsultaVista({ resultado }: ResultadoConsultaVistaProp
       <ol className="flex flex-col gap-3">
         {/* El número de cita es la posición en esta lista: el backend numera los contextos
             [1..n] en el mismo orden en que devuelve las fuentes. `orden` es otra cosa. */}
-        {resultado.fuentes.map((fuente, indice) => (
-          <li key={`${fuente.documentoId}-${fuente.orden}`} className="rounded-md border border-border p-3 text-sm">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <p className="font-medium text-text">
-                [{indice + 1}]{' '}
-                {fuente.fuenteUrl ? (
-                  <a
-                    href={fuente.fuenteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-dotted underline-offset-2 hover:text-primary"
-                  >
-                    {fuente.nombreArchivo}
-                  </a>
-                ) : (
-                  fuente.nombreArchivo
-                )}
-              </p>
-              <p className="text-xs text-muted">
-                {fuente.pagina !== null && `Página ${fuente.pagina} · `}
-                {(fuente.similitud * 100).toFixed(0)}% de similitud
-              </p>
-            </div>
-            <p className="mt-1 text-text">{fuente.fragmento}</p>
-          </li>
-        ))}
+        {resultado.fuentes.map((fuente, indice) => {
+          const textoCabecera = fuente.norma ?? fuente.nombreArchivo;
+          return (
+            <li key={`${fuente.documentoId}-${fuente.orden}`} className="rounded-md border border-border p-3 text-sm">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <p className="font-medium text-text">
+                  [{indice + 1}]{' '}
+                  {fuente.fuenteUrl ? (
+                    <a
+                      href={fuente.fuenteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline decoration-dotted underline-offset-2 hover:text-primary"
+                    >
+                      {textoCabecera}
+                    </a>
+                  ) : (
+                    textoCabecera
+                  )}
+                  {fuente.articulo && ` · Art. ${fuente.articulo}`}
+                  {fuente.pagina !== null && ` · pág. ${fuente.pagina}`}
+                </p>
+                <p className="text-xs text-muted">{(fuente.similitud * 100).toFixed(0)}% de similitud</p>
+              </div>
+              <p className="mt-1 text-text">{fuente.fragmento}</p>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );

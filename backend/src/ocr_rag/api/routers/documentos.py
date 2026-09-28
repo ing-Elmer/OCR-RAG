@@ -10,7 +10,7 @@ from ocr_rag.api.responses import ApiResponse, ApiStatus
 from ocr_rag.api.security import get_current_user, require_permission
 from ocr_rag.application.services.documento_service import DocumentoService
 from ocr_rag.core.current_user import CurrentUser
-from ocr_rag.core.schemas.documento import DocumentoResponse
+from ocr_rag.core.schemas.documento import DocumentoActualizacionRequest, DocumentoResponse
 
 router = APIRouter(
     prefix="/api/documentos", tags=["documentos"], dependencies=[Depends(get_current_user)]
@@ -38,6 +38,7 @@ async def cargar_documento(
         contenido=contenido,
         idioma=form.idioma,
         creado_por_id=usuario_actual.id,
+        tipo_documento=form.tipo_documento,
     )
     return ApiResponse[DocumentoResponse].created("Documento cargado", documento)
 
@@ -68,3 +69,15 @@ async def obtener_documento(
     """Devuelve el detalle de un documento. Responde 404 si no existe."""
     documento = await service.obtener(documento_id)
     return ApiResponse[DocumentoResponse].ok("Documento obtenido", documento)
+
+
+@router.patch("/{documento_id}", response_model=ApiResponse[DocumentoResponse])
+async def actualizar_documento(
+    documento_id: int,
+    body: DocumentoActualizacionRequest,
+    _usuario_actual: Annotated[CurrentUser, Depends(require_permission("DOCUMENTOS_CARGAR"))],
+    service: Annotated[DocumentoService, Depends(get_documento_service)],
+) -> ApiResponse[DocumentoResponse]:
+    """Actualiza el tipo y/o la norma de un documento. Responde 404 si no existe."""
+    documento = await service.actualizar(documento_id, body)
+    return ApiResponse[DocumentoResponse].ok("Documento actualizado", documento)

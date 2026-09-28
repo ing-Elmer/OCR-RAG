@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 
 from ocr_rag.api.dependencies import (
+    get_clasificador_documento,
     get_documento_repository,
     get_embedding_client,
     get_extractor_texto,
@@ -17,10 +18,11 @@ from ocr_rag.api.dependencies import (
 )
 from ocr_rag.api.errors import registrar_manejadores_de_error
 from ocr_rag.api.routers import auth, consultas, documentos, health, me
-from ocr_rag.application.background import BackgroundTaskQueue, Tarea
+from ocr_rag.application.background import BackgroundTaskQueue, Tarea, TaskEnqueuer
 from ocr_rag.application.services.procesamiento_documento_service import (
     ProcesamientoDocumentoService,
 )
+from ocr_rag.core.repositories import DocumentoRepository
 from ocr_rag.core.settings import Settings, get_settings
 from ocr_rag.infrastructure.db import ConnectionFactory
 
@@ -74,18 +76,44 @@ async def _reencolar_documentos_sin_terminar(
     settings: Settings,
     tareas: BackgroundTaskQueue,
 ) -> None:
-    """Reencola el procesamiento de los documentos que quedaron `pendiente` o `procesando`.
+    """Arma las dependencias del worker y recupera el procesamiento sin terminar al arrancar.
 
-    Un reinicio del proceso (deploy, caída) no debe dejarlos colgados: sin esto, quedarían en
-    ese estado para siempre porque nadie vuelve a encolar su procesamiento.
+    Un reinicio del proceso (deploy, caída) no debe dejar documentos colgados: sin esto,
+    quedarían `pendiente` o `procesando` para siempre porque nadie vuelve a encolar su
+    procesamiento.
     """
     repositorio = get_documento_repository(connection_factory)
     ocr_client = get_ocr_client()
     extractor = get_extractor_texto(ocr_client)
     embedding_client = get_embedding_client(openai_client, settings)
-    procesamiento_service = get_procesamiento_service(repositorio, extractor, embedding_client)
+    clasificador = get_clasificador_documento(openai_client, settings)
+    procesamiento_service = get_procesamiento_service(
+        repositorio, extractor, embedding_client, clasificador
+    )
 
-    ids_pendientes = await repositorio.listar_ids_pendientes_o_procesando()
+    await _resetear_y_reencolar_pendientes(repositorio, procesamiento_service, tareas)
+
+
+async def _resetear_y_reencolar_pendientes(
+    repositorio: DocumentoRepository,
+    procesamiento_service: ProcesamientoDocumentoService,
+    tareas: TaskEnqueuer,
+) -> None:
+    """Devuelve a `pendiente` los documentos que quedaron `procesando` (el reinicio cortó al
+    worker a mitad de camino) y reencola el procesamiento de todos los `pendiente`.
+
+    Como el worker lee `clasificacion_pendiente` y `tipo_documento` de la base al tomar cada
+    documento (nunca de un parámetro del closure), esta recuperación nunca pierde la intención
+    de clasificar automáticamente un documento que se cargó sin `tipoDocumento`.
+    """
+    reseteados = await repositorio.resetear_procesando_a_pendiente()
+    if reseteados:
+        logger.info(
+            "Se resetearon %s documentos que habían quedado 'procesando' tras un reinicio",
+            reseteados,
+        )
+
+    ids_pendientes = await repositorio.listar_ids_pendientes()
     for documento_id in ids_pendientes:
         await tareas.encolar(_crear_tarea_de_procesamiento(procesamiento_service, documento_id))
     if ids_pendientes:

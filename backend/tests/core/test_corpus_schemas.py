@@ -26,6 +26,17 @@ def test_fuente_corpus_valida_acepta_los_campos_minimos() -> None:
     assert fuente.idioma is None
     assert fuente.descripcion == ""
     assert fuente.licencia == ""
+    assert fuente.tipo == "normativa"
+    assert fuente.norma is None
+
+
+def test_fuente_corpus_acepta_tipo_y_norma_explicitos() -> None:
+    fuente = FuenteCorpus.model_validate(
+        _datos_fuente(tipo="aduanero", norma="Reglamento de prueba")
+    )
+
+    assert fuente.tipo == "aduanero"
+    assert fuente.norma == "Reglamento de prueba"
 
 
 def test_fuente_corpus_con_id_en_formato_invalido_lanza_validation_error() -> None:
@@ -87,6 +98,14 @@ def test_manifiesto_empaquetado_por_defecto_carga_y_valida() -> None:
     ]
     for fuente in manifiesto.fuente:
         assert fuente.url.startswith("https://")
+        assert fuente.tipo == "normativa"
         # La edición de la Imprenta Nacional de CR mezcla CAUCA III (derogado), CAUCA IV y el
         # reglamento viejo (Res. 101-2002): no debe volver al manifiesto.
         assert "imprentanacional.go.cr" not in fuente.url
+
+    normas = {fuente.id: fuente.norma for fuente in manifiesto.fuente}
+    assert normas == {
+        "cauca-iv": "CAUCA IV",
+        "recauca-iv": "RECAUCA IV",
+        "convenio-arancelario-aduanero": "Convenio Arancelario y Aduanero Centroamericano",
+    }

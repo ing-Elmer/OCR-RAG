@@ -12,6 +12,8 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ocr_rag.core.schemas.documento import TipoDocumento
+
 _PATRON_ID = re.compile(r"^[a-z0-9-]+$")
 _PATRON_IDIOMA = re.compile(r"^[a-z]{3}(\+[a-z]{3})*$")
 
@@ -28,6 +30,8 @@ class FuenteCorpus(BaseModel):
     descripcion: str = ""
     licencia: str = ""
     verificado: date
+    tipo: TipoDocumento = "normativa"
+    norma: str | None = None
 
     @field_validator("id")
     @classmethod

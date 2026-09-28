@@ -53,7 +53,9 @@ from ocr_rag.core.schemas.documento import (
     DocumentoParaProcesar,
     DocumentoResponse,
     EstadoDocumento,
+    FragmentoContexto,
     PaginaExtraida,
+    TipoDocumento,
 )
 from ocr_rag.core.schemas.usuario import CurrentUserResponse, UsuarioCredenciales
 from ocr_rag.core.settings import get_settings
@@ -210,6 +212,10 @@ class _DocumentoAlmacenado:
     contenido: bytes
     sha256: str
     fuente_url: str | None = None
+    tipo_documento: TipoDocumento = "otro"
+    norma: str | None = None
+    clasificacion_pendiente: bool = False
+    version_procesamiento: int = 0
 
 
 class FakeDocumentoRepository:
@@ -219,8 +225,9 @@ class FakeDocumentoRepository:
         self._documentos: dict[int, _DocumentoAlmacenado] = {}
         self._chunks: dict[int, list[ChunkParaGuardar]] = {}
         self._siguiente_id = 1
-        # Precargable desde el test: lo que debe devolver `buscar_similares`.
-        self.resultados_similares: list[ChunkSimilar] = []
+        # Precargables desde el test: lo que deben devolver las dos búsquedas de candidatos.
+        self.resultados_vectoriales: list[ChunkSimilar] = []
+        self.resultados_lexicos: list[ChunkSimilar] = []
 
     async def crear(
         self,
@@ -232,6 +239,9 @@ class FakeDocumentoRepository:
         contenido: bytes,
         sha256: str,
         fuente_url: str | None = None,
+        tipo_documento: TipoDocumento = "otro",
+        norma: str | None = None,
+        clasificacion_pendiente: bool = False,
     ) -> int:
         documento_id = self._siguiente_id
         self._siguiente_id += 1
@@ -247,6 +257,9 @@ class FakeDocumentoRepository:
             contenido=contenido,
             sha256=sha256,
             fuente_url=fuente_url,
+            tipo_documento=tipo_documento,
+            norma=norma,
+            clasificacion_pendiente=clasificacion_pendiente,
         )
         self._chunks[documento_id] = []
         return documento_id
@@ -267,6 +280,8 @@ class FakeDocumentoRepository:
             error_detalle=datos.error_detalle,
             created_at=datos.created_at,
             fuente_url=datos.fuente_url,
+            tipo_documento=datos.tipo_documento,
+            norma=datos.norma,
         )
 
     async def obtener_id_por_sha256(self, sha256: str) -> int | None:
@@ -294,51 +309,147 @@ class FakeDocumentoRepository:
             if id_ in self._documentos and self._documentos[id_].estado == "procesado"
         }
 
-    async def obtener_para_procesar(self, documento_id: int) -> DocumentoParaProcesar | None:
+    async def tomar_para_procesar(self, documento_id: int) -> DocumentoParaProcesar | None:
         datos = self._documentos.get(documento_id)
-        if datos is None:
+        if datos is None or datos.estado == "procesando":
             return None
+        datos.estado = "procesando"
         return DocumentoParaProcesar(
             id=documento_id,
             idioma=datos.idioma or "",
             tipo_contenido=datos.tipo_contenido,
             contenido=datos.contenido,
+            tipo_documento=datos.tipo_documento,
+            version_procesamiento=datos.version_procesamiento,
+            clasificacion_pendiente=datos.clasificacion_pendiente,
+            norma=datos.norma,
         )
 
-    async def marcar_procesando(self, documento_id: int) -> None:
-        self._documentos[documento_id].estado = "procesando"
-
-    async def marcar_error(self, documento_id: int, error_detalle: str) -> None:
-        self._documentos[documento_id].estado = "error"
-        self._documentos[documento_id].error_detalle = error_detalle
+    async def marcar_error(
+        self, documento_id: int, error_detalle: str, version_procesamiento: int
+    ) -> bool:
+        datos = self._documentos.get(documento_id)
+        if datos is None or datos.version_procesamiento != version_procesamiento:
+            return False
+        datos.estado = "error"
+        datos.error_detalle = error_detalle
+        return True
 
     async def guardar_resultado(
-        self, documento_id: int, paginas: int, chunks: list[ChunkParaGuardar]
-    ) -> None:
+        self,
+        documento_id: int,
+        paginas: int,
+        chunks: list[ChunkParaGuardar],
+        version_procesamiento: int,
+    ) -> bool:
+        datos = self._documentos.get(documento_id)
+        if datos is None or datos.version_procesamiento != version_procesamiento:
+            return False
         self._chunks[documento_id] = list(chunks)
-        datos = self._documentos[documento_id]
         datos.estado = "procesado"
         datos.paginas = paginas
         datos.error_detalle = None
+        return True
 
-    async def listar_ids_pendientes_o_procesando(self) -> list[int]:
-        return [
-            id_
-            for id_, datos in self._documentos.items()
-            if datos.estado in ("pendiente", "procesando")
-        ]
+    async def actualizar_clasificacion(
+        self, documento_id: int, tipo_documento: TipoDocumento, version_procesamiento: int
+    ) -> bool:
+        datos = self._documentos.get(documento_id)
+        if (
+            datos is None
+            or not datos.clasificacion_pendiente
+            or datos.version_procesamiento != version_procesamiento
+        ):
+            return False
+        datos.tipo_documento = tipo_documento
+        datos.clasificacion_pendiente = False
+        return True
 
-    async def buscar_similares(
-        self, embedding: list[float], top_k: int, documento_ids: list[int] | None
+    async def actualizar(
+        self,
+        documento_id: int,
+        tipo_documento: TipoDocumento | None,
+        norma: str | None,
+        *,
+        actualizar_norma: bool,
+        reencolar: bool,
+    ) -> bool:
+        datos = self._documentos.get(documento_id)
+        if datos is None:
+            return False
+        if tipo_documento is not None:
+            datos.tipo_documento = tipo_documento
+            datos.clasificacion_pendiente = False
+        if actualizar_norma:
+            datos.norma = norma
+        if reencolar:
+            datos.version_procesamiento += 1
+            datos.estado = "pendiente"
+        return True
+
+    async def incrementar_version(self, documento_id: int) -> None:
+        self._documentos[documento_id].version_procesamiento += 1
+
+    async def resetear_procesando_a_pendiente(self) -> int:
+        afectados = 0
+        for datos in self._documentos.values():
+            if datos.estado == "procesando":
+                datos.estado = "pendiente"
+                afectados += 1
+        return afectados
+
+    async def listar_ids_pendientes(self) -> list[int]:
+        return [id_ for id_, datos in self._documentos.items() if datos.estado == "pendiente"]
+
+    def version_de(self, documento_id: int) -> int:
+        """Helper de test: `version_procesamiento` interna del documento."""
+        return self._documentos[documento_id].version_procesamiento
+
+    def clasificacion_pendiente_de(self, documento_id: int) -> bool:
+        """Helper de test: `clasificacion_pendiente` interna del documento."""
+        return self._documentos[documento_id].clasificacion_pendiente
+
+    async def buscar_candidatos_vectoriales(
+        self,
+        embedding: list[float],
+        limite: int,
+        documento_ids: list[int] | None,
+        tipos_documento: list[TipoDocumento] | None,
     ) -> list[ChunkSimilar]:
-        resultados = self.resultados_similares
-        if documento_ids is not None:
-            resultados = [r for r in resultados if r.documento_id in documento_ids]
-        return resultados[:top_k]
+        return _filtrar_candidatos(
+            self.resultados_vectoriales, limite, documento_ids, tipos_documento
+        )
+
+    async def buscar_candidatos_lexicos(
+        self,
+        pregunta: str,
+        embedding: list[float],
+        limite: int,
+        documento_ids: list[int] | None,
+        tipos_documento: list[TipoDocumento] | None,
+    ) -> list[ChunkSimilar]:
+        return _filtrar_candidatos(self.resultados_lexicos, limite, documento_ids, tipos_documento)
 
     def chunks_de(self, documento_id: int) -> list[ChunkParaGuardar]:
         """Helper de test: chunks guardados para `documento_id`."""
         return self._chunks.get(documento_id, [])
+
+
+def _filtrar_candidatos(
+    candidatos: list[ChunkSimilar],
+    limite: int,
+    documento_ids: list[int] | None,
+    tipos_documento: list[TipoDocumento] | None,
+) -> list[ChunkSimilar]:
+    """Aplica a `candidatos` los mismos filtros que el repositorio real (documentos, tipos) y el
+    límite de resultados, para las dos búsquedas fake de `FakeDocumentoRepository`.
+    """
+    resultados = candidatos
+    if documento_ids is not None:
+        resultados = [r for r in resultados if r.documento_id in documento_ids]
+    if tipos_documento is not None:
+        resultados = [r for r in resultados if r.tipo_documento in tipos_documento]
+    return resultados[:limite]
 
 
 class FakeOcrClient:
@@ -386,15 +497,30 @@ class FakeEmbeddingClient:
         return [[float(len(texto))] * self.dimensiones for texto in textos]
 
 
+class FakeClasificadorDocumento:
+    """Implementación en memoria de `ClasificadorDocumento` (`core.clients`), para tests.
+
+    Por defecto devuelve `"otro"`, como haría la implementación real ante cualquier falla.
+    """
+
+    def __init__(self, tipo: TipoDocumento = "otro") -> None:
+        self.tipo = tipo
+        self.llamadas: list[str] = []
+
+    async def clasificar(self, texto: str) -> TipoDocumento:
+        self.llamadas.append(texto)
+        return self.tipo
+
+
 class FakeChatClient:
     """Implementación en memoria de `ChatClient` (`core.clients`), para tests."""
 
     def __init__(self, respuesta: str = "Respuesta de prueba [1]") -> None:
         self.respuesta = respuesta
-        self.llamadas: list[tuple[str, list[str]]] = []
+        self.llamadas: list[tuple[str, list[FragmentoContexto]]] = []
 
-    async def responder(self, pregunta: str, contextos: list[str]) -> str:
-        self.llamadas.append((pregunta, list(contextos)))
+    async def responder(self, pregunta: str, fragmentos: list[FragmentoContexto]) -> str:
+        self.llamadas.append((pregunta, list(fragmentos)))
         return self.respuesta
 
 
@@ -507,7 +633,10 @@ async def async_client(
         get_settings(),
     )
     procesamiento_service = ProcesamientoDocumentoService(
-        fake_documento_repository, FakeExtractorTexto(), FakeEmbeddingClient()
+        fake_documento_repository,
+        FakeExtractorTexto(),
+        FakeEmbeddingClient(),
+        FakeClasificadorDocumento(),
     )
     app.dependency_overrides[get_documento_service] = lambda: DocumentoService(
         fake_documento_repository,

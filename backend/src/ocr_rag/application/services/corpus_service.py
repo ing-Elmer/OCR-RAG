@@ -113,6 +113,8 @@ class CorpusService:
             idioma=idioma_normalizado,
             creado_por_id=creado_por_id,
             fuente_url=fuente.url,
+            tipo_documento=fuente.tipo,
+            norma=fuente.norma,
         )
         await self._documento_service.procesar_ahora(documento.id)
 

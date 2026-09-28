@@ -4,8 +4,15 @@ import sys
 
 from ocr_rag.cli.cargar_corpus import main as cargar_corpus_main
 from ocr_rag.cli.crear_admin import main as crear_admin_main
+from ocr_rag.cli.evaluar import main as evaluar_main
+from ocr_rag.cli.reprocesar import main as reprocesar_main
 
-_COMANDOS = {"crear-admin": crear_admin_main, "cargar-corpus": cargar_corpus_main}
+_COMANDOS = {
+    "crear-admin": crear_admin_main,
+    "cargar-corpus": cargar_corpus_main,
+    "reprocesar": reprocesar_main,
+    "evaluar": evaluar_main,
+}
 
 
 def main() -> None:

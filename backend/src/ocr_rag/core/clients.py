@@ -5,7 +5,7 @@ descarga de archivos remotos).
 from typing import Protocol
 
 from ocr_rag.core.schemas.corpus import ArchivoDescargado
-from ocr_rag.core.schemas.documento import PaginaExtraida
+from ocr_rag.core.schemas.documento import FragmentoContexto, PaginaExtraida, TipoDocumento
 
 
 class OcrClient(Protocol):
@@ -25,10 +25,14 @@ class EmbeddingClient(Protocol):
 
 
 class ChatClient(Protocol):
-    """Genera una respuesta en lenguaje natural a partir de una pregunta y sus contextos."""
+    """Genera una respuesta en lenguaje natural a partir de una pregunta y sus fragmentos."""
 
-    async def responder(self, pregunta: str, contextos: list[str]) -> str:
-        """Responde `pregunta` usando únicamente la información de `contextos`."""
+    async def responder(self, pregunta: str, fragmentos: list[FragmentoContexto]) -> str:
+        """Responde `pregunta` usando únicamente la información de `fragmentos`.
+
+        Cada fragmento se identifica con su `numero` (la posición en las fuentes que ve el
+        usuario), que la implementación debe citar entre corchetes (p. ej. `[1]`).
+        """
         ...
 
 
@@ -39,6 +43,19 @@ class ExtractorTexto(Protocol):
         self, contenido: bytes, tipo_contenido: str, idioma: str
     ) -> list[PaginaExtraida]:
         """Devuelve el texto de cada página del documento, en orden."""
+        ...
+
+
+class ClasificadorDocumento(Protocol):
+    """Clasifica automáticamente un documento en una de las categorías de `TipoDocumento`.
+
+    Se usa cuando la carga no indicó `tipoDocumento`: el worker de procesamiento la invoca
+    después de extraer el texto, con una muestra del contenido. La implementación nunca debe
+    lanzar: ante cualquier falla, timeout o respuesta inesperada, resuelve a `"otro"`.
+    """
+
+    async def clasificar(self, texto: str) -> TipoDocumento:
+        """Devuelve la categoría más probable de `texto` (una muestra del documento)."""
         ...
 
 

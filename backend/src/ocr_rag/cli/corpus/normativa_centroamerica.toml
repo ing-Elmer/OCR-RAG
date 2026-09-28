@@ -11,6 +11,9 @@
 #   licencia     texto libre, informativo (no se valida ni se hace cumplir)
 #   verificado   fecha (AAAA-MM-DD) en la que se confirmó que la url respondía y que la norma
 #                seguía vigente
+#   tipo         opcional; TipoDocumento del documento (por defecto "normativa")
+#   norma        opcional; nombre exacto de la norma/instrumento legal, usado como filtro y
+#                citado en las respuestas del RAG
 #
 # Para sumar una fuente nueva: agregar un bloque `[[fuente]]` al final de la lista, verificar a
 # mano que la url responda un PDF público y legal de redistribuir, y anotar `verificado` con la
@@ -23,6 +26,8 @@ url = "https://faolex.fao.org/docs/pdf/sica205668.pdf"
 descripcion = "Texto del CAUCA IV (arts. 1 a 134), vigente desde 2008. Deroga el CAUCA III (Res. 85-2002). Versión original de 2008: no incluye reformas posteriores."
 licencia = "Texto normativo oficial (compilado por FAOLEX / FAO)"
 verificado = 2026-09-26
+tipo = "normativa"
+norma = "CAUCA IV"
 
 [[fuente]]
 id = "recauca-iv"
@@ -31,6 +36,8 @@ url = "https://faolex.fao.org/docs/pdf/sica205787.pdf"
 descripcion = "Texto del RECAUCA vigente (arts. 1 a 646), reglamento del CAUCA IV. Reemplaza al reglamento de la Res. 101-2002. Versión original de 2008: no incluye reformas posteriores."
 licencia = "Texto normativo oficial (compilado por FAOLEX / FAO)"
 verificado = 2026-09-26
+tipo = "normativa"
+norma = "RECAUCA IV"
 
 [[fuente]]
 id = "convenio-arancelario-aduanero"
@@ -39,6 +46,8 @@ url = "https://sde.gob.hn/wp-content/uploads/2017/08/Convenio-Arancelario-y-Adua
 descripcion = "Convenio sobre el Régimen Arancelario y Aduanero Centroamericano, con sus Protocolos, publicación oficial de la SIECA."
 licencia = "Publicación oficial"
 verificado = 2026-09-26
+tipo = "normativa"
+norma = "Convenio Arancelario y Aduanero Centroamericano"
 
 # -------------------------------------------------------------------------------------------
 # Fuentes descartadas (no volver a agregarlas sin resolver primero el motivo):

@@ -13,6 +13,7 @@ from ocr_rag.core.schemas.corpus import FuenteCorpus
 from ocr_rag.core.settings import get_settings
 from tests.conftest import (
     FakeBackgroundTaskQueue,
+    FakeClasificadorDocumento,
     FakeDescargadorHttp,
     FakeDocumentoRepository,
     FakeEmbeddingClient,
@@ -27,7 +28,7 @@ def _crear_corpus_service(
 ) -> CorpusService:
     validador = DocumentoValidator(repositorio, get_settings())
     procesador = ProcesamientoDocumentoService(
-        repositorio, FakeExtractorTexto(), FakeEmbeddingClient()
+        repositorio, FakeExtractorTexto(), FakeEmbeddingClient(), FakeClasificadorDocumento()
     )
     documento_service = DocumentoService(
         repositorio, validador, procesador, FakeBackgroundTaskQueue()
@@ -59,6 +60,21 @@ async def test_cargar_fuente_nueva_la_crea_y_procesa() -> None:
     assert documento is not None
     assert documento.estado == "procesado"
     assert documento.fuente_url == "https://example.org/cauca.pdf"
+
+
+async def test_cargar_fuente_guarda_el_tipo_y_la_norma_del_manifiesto() -> None:
+    repositorio = FakeDocumentoRepository()
+    descargador = FakeDescargadorHttp()
+    service = _crear_corpus_service(repositorio, descargador)
+    fuente = _fuente(tipo="normativa", norma="CAUCA IV")
+
+    resultado = await service.cargar_fuente(fuente, _CREADO_POR_ID, dry_run=False)
+
+    assert resultado.documento_id is not None
+    documento = await repositorio.obtener(resultado.documento_id)
+    assert documento is not None
+    assert documento.tipo_documento == "normativa"
+    assert documento.norma == "CAUCA IV"
 
 
 async def test_cargar_fuente_ya_cargada_por_su_sha256_la_omite_sin_crear_otra() -> None:

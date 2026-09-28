@@ -87,10 +87,29 @@ Los DSN/credenciales vienen de variables de entorno (ver `backend/.env.example`)
 - Los textos de FAOLEX son las versiones originales de 2008 y **no incluyen reformas
   posteriores**. Pendiente: sumar las resoluciones modificatorias vigentes.
 
+### Evaluación del RAG
+- Set: `backend/src/ocr_rag/cli/evaluacion/normativa_ca.toml`. Son 16 casos y 27 artículos
+  esperados, verificados contra el texto de CAUCA IV y RECAUCA IV.
+- Correr: `docker compose exec backend python -m ocr_rag.cli evaluar --usuario <u> [--salida-json /tmp/e.json]`.
+  Hace consultas reales a OpenAI (unos centavos). Desde Git Bash, anteponer
+  `MSYS_NO_PATHCONV=1` para que `/tmp` no se convierta en ruta de Windows.
+- **Correr la evaluación antes y después de cualquier cambio** de prompt, chunking, búsqueda o
+  modelo, y comparar contra la línea base:
+
+  | Fecha | Cambio | hit@k | MRR | Citas completas |
+  |---|---|---|---|---|
+  | 2026-09-27 | Fase 1 (híbrida + artículos + prompt con ejemplo de cita) | 1.00 | 0.79 | 81% |
+
+- Las respuestas varían entre corridas (temperature 0.1): una diferencia de ±1 caso no es
+  significativa. Antes de culpar al modelo, mirar el JSON: la métrica también puede fallar
+  (pasó con "CAUCA" vs. "CAUCA IV").
+- Pendiente: sumar casos negativos (preguntas sin respuesta en el corpus) para medir si el
+  sistema inventa.
+
 ### Integración con Codex
 Codex CLI (≥ 0.157) se usa desde Claude en modo no interactivo. Ya no expone un servidor MCP
 (`codex mcp-server` no existe en esa versión), así que no se integra por MCP.
-- `/codex-revisar [rama base]` — segunda opinión: `codex review` en solo lectura; Claude
+- `/codex-revisar [rama base]` — segunda opinión: `codex exec -s read-only` (no `codex review`, que no acepta instrucciones con `--uncommitted`/`--base`); Claude
   verifica cada hallazgo en el código y los consolida con su propia revisión.
 - `/codex-delegar <tarea>` — Claude arma un prompt autosuficiente (perfil + reglas + contrato +
   límites) y lo ejecuta con `codex exec -s workspace-write`. Después verifica el resultado con
@@ -122,8 +141,12 @@ sino alcance pendiente:
   todavía.
 - **Deploy sin configurar**: Railway y Vercel todavía no existen (ver TODO en la sección Deploy).
 - **`gh` no está instalado** en la máquina local, así que `/pr` no puede crear el PR desde acá.
-- **Red corporativa con proxy TLS**: en esta máquina `uv sync` falla con
-  `invalid peer certificate: UnknownIssuer` y hay que correrlo como `uv sync --system-certs`.
-  Es un dato del entorno local, no del proyecto: el CI de GitHub Actions no lo necesita.
+- **Antivirus que intercepta HTTPS (Avast Web Shield)**: en la máquina de desarrollo, Avast
+  re-firma las conexiones HTTPS con su propia raíz ("Avast Web/Mail Shield Root"). Windows
+  confía en ella, pero `uv` no (hay que usar `uv sync --system-certs`) y los contenedores Linux
+  tampoco, así que `docker compose build` falla con `UnknownIssuer` al descargar de PyPI.
+  Solución: excluir `pypi.org` y `files.pythonhosted.org` del *HTTPS scanning* de Avast, o
+  desactivar esa opción. No es un problema del proyecto: el CI de GitHub Actions no lo tiene.
+  (Antes se lo había diagnosticado como "proxy corporativo": era Avast.)
 - **`agent-view.vsix`** quedó versionado en la raíz desde el commit inicial del kit; evaluar si
   corresponde sacarlo del repo.

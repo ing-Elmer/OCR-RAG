@@ -20,12 +20,22 @@ export const endpoints = {
     get: '/api/me',
   },
   documentos: {
-    /** POST /api/documentos — permiso DOCUMENTOS_CARGAR. multipart/form-data (`archivo`, `idioma`). */
+    /**
+     * POST /api/documentos — permiso DOCUMENTOS_CARGAR. multipart/form-data
+     * (`archivo`, `idioma`, `tipoDocumento` opcional; sin indicarlo, el backend
+     * lo clasifica con IA al procesar el documento).
+     */
     crear: '/api/documentos',
     /** GET /api/documentos?limite&offset — permiso DOCUMENTOS_VER. */
     listar: '/api/documentos',
     /** GET /api/documentos/{id} — permiso DOCUMENTOS_VER. */
     obtener: (id: number): string => `/api/documentos/${id}`,
+    /**
+     * PATCH /api/documentos/{id} — permiso DOCUMENTOS_CARGAR. Body JSON
+     * `{ tipoDocumento?, norma? }`; cambiar el tipo a o desde `normativa`
+     * vuelve a procesar el documento.
+     */
+    actualizar: (id: number): string => `/api/documentos/${id}`,
   },
   consultas: {
     /** POST /api/consultas — permiso CONSULTAS_REALIZAR. */

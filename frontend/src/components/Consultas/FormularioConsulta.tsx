@@ -2,7 +2,8 @@ import { useId, useState, type FormEvent } from 'react';
 import { ApiError } from '@/services/ApiClient';
 import { realizarConsulta } from '@/services/ConsultaService';
 import { Button } from '@/components/ui/Button';
-import type { Documento } from '@/types/documento';
+import { OPCIONES_TIPO_DOCUMENTO } from '@/utils/tipoDocumento';
+import type { Documento, TipoDocumento } from '@/types/documento';
 import type { ResultadoConsulta } from '@/types/consulta';
 
 const MENSAJE_ERROR_GENERICO = 'No se pudo responder la consulta. Intentá de nuevo.';
@@ -21,6 +22,7 @@ export function FormularioConsulta({ documentosDisponibles, onResultado }: Formu
 
   const [pregunta, setPregunta] = useState('');
   const [documentoIdsSeleccionados, setDocumentoIdsSeleccionados] = useState<number[]>([]);
+  const [tiposSeleccionados, setTiposSeleccionados] = useState<TipoDocumento[]>([]);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -29,6 +31,10 @@ export function FormularioConsulta({ documentosDisponibles, onResultado }: Formu
 
   function alternarDocumento(id: number) {
     setDocumentoIdsSeleccionados((actual) => (actual.includes(id) ? actual.filter((valor) => valor !== id) : [...actual, id]));
+  }
+
+  function alternarTipo(tipo: TipoDocumento) {
+    setTiposSeleccionados((actual) => (actual.includes(tipo) ? actual.filter((valor) => valor !== tipo) : [...actual, tipo]));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -45,6 +51,7 @@ export function FormularioConsulta({ documentosDisponibles, onResultado }: Formu
       const resultado = await realizarConsulta({
         pregunta: pregunta.trim(),
         documentoIds: documentoIdsSeleccionados.length > 0 ? documentoIdsSeleccionados : undefined,
+        tiposDocumento: tiposSeleccionados.length > 0 ? tiposSeleccionados : undefined,
       });
       onResultado(resultado);
     } catch (error) {
@@ -87,6 +94,24 @@ export function FormularioConsulta({ documentosDisponibles, onResultado }: Formu
           {pregunta.length}/{LONGITUD_MAXIMA_PREGUNTA} caracteres
         </p>
       </div>
+
+      <fieldset className="mb-4">
+        <legend className="mb-2 text-sm font-medium text-text">Filtrar por tipo de documento (opcional)</legend>
+        <div className="flex flex-wrap gap-3">
+          {OPCIONES_TIPO_DOCUMENTO.map((opcion) => (
+            <label key={opcion.valor} className="flex items-center gap-2 text-sm text-text">
+              <input
+                type="checkbox"
+                checked={tiposSeleccionados.includes(opcion.valor)}
+                onChange={() => alternarTipo(opcion.valor)}
+                disabled={isSubmitting}
+                className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              />
+              {opcion.etiqueta}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       {documentosDisponibles.length > 0 && (
         <fieldset className="mb-4">

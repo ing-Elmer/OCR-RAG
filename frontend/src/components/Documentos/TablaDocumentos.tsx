@@ -1,10 +1,18 @@
+import { useState } from 'react';
 import { BadgeEstadoDocumento } from '@/components/Documentos/BadgeEstadoDocumento';
+import { BadgeTipoDocumento } from '@/components/Documentos/BadgeTipoDocumento';
+import { ModalEditarDocumento } from '@/components/Documentos/ModalEditarDocumento';
 import { createDataTableColumnHelper, DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { Button } from '@/components/ui/Button';
 import { formatearTamanoArchivo } from '@/utils/formatoArchivo';
 import type { Documento } from '@/types/documento';
 
 interface TablaDocumentosProps {
   documentos: Documento[];
+  /** Si puede editar (permiso DOCUMENTOS_CARGAR), se agrega la columna Acciones con Editar. */
+  puedeEditar: boolean;
+  /** Se llama cuando una edición se guardó bien, para refrescar el listado. */
+  onActualizado: () => void;
 }
 
 const columnHelper = createDataTableColumnHelper<Documento>();
@@ -16,7 +24,7 @@ const FORMATO_FECHA = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', tim
 // (string, number, EstadoDocumento...) y ese array deja de ser asignable al
 // `TValue = unknown` que exige `DataTableColumn<TData>`, por la varianza de
 // las funciones de columna de `@tanstack/react-table`.
-const columnas: Array<DataTableColumn<Documento>> = [
+const COLUMNAS_BASE: Array<DataTableColumn<Documento>> = [
   columnHelper.display({
     id: 'nombreArchivo',
     header: 'Nombre',
@@ -43,8 +51,18 @@ const columnas: Array<DataTableColumn<Documento>> = [
     },
   }),
   columnHelper.display({
-    id: 'tipoContenido',
+    id: 'tipoDocumento',
     header: 'Tipo',
+    cell: (info) => <BadgeTipoDocumento tipo={info.row.original.tipoDocumento} />,
+  }),
+  columnHelper.display({
+    id: 'norma',
+    header: 'Norma',
+    cell: (info) => info.row.original.norma ?? '—',
+  }),
+  columnHelper.display({
+    id: 'tipoContenido',
+    header: 'Formato',
     cell: (info) => info.row.original.tipoContenido,
   }),
   columnHelper.display({
@@ -74,14 +92,57 @@ const columnas: Array<DataTableColumn<Documento>> = [
   }),
 ];
 
-/** Tabla de documentos cargados: estado con badge de color y detalle de error inline. */
-export function TablaDocumentos({ documentos }: TablaDocumentosProps) {
+function construirColumnas(
+  puedeEditar: boolean,
+  onEditar: (documento: Documento) => void,
+): Array<DataTableColumn<Documento>> {
+  if (!puedeEditar) {
+    return COLUMNAS_BASE;
+  }
+
+  return [
+    ...COLUMNAS_BASE,
+    columnHelper.display({
+      id: 'acciones',
+      header: 'Acciones',
+      cell: (info) => (
+        <Button
+          variant="secondary"
+          onClick={() => onEditar(info.row.original)}
+          aria-label={`Editar ${info.row.original.nombreArchivo}`}
+        >
+          Editar
+        </Button>
+      ),
+    }),
+  ];
+}
+
+/** Tabla de documentos cargados: estado con badge de color, tipo/norma y detalle de error inline. */
+export function TablaDocumentos({ documentos, puedeEditar, onActualizado }: TablaDocumentosProps) {
+  const [documentoEditando, setDocumentoEditando] = useState<Documento | null>(null);
+
+  const columnas = construirColumnas(puedeEditar, setDocumentoEditando);
+
   return (
-    <DataTable
-      data={documentos}
-      columns={columnas}
-      getRowId={(documento) => String(documento.id)}
-      emptyMessage="Todavía no se cargó ningún documento."
-    />
+    <>
+      <DataTable
+        data={documentos}
+        columns={columnas}
+        getRowId={(documento) => String(documento.id)}
+        emptyMessage="Todavía no se cargó ningún documento."
+      />
+      {documentoEditando && (
+        <ModalEditarDocumento
+          documento={documentoEditando}
+          isOpen={true}
+          onClose={() => setDocumentoEditando(null)}
+          onGuardado={() => {
+            setDocumentoEditando(null);
+            onActualizado();
+          }}
+        />
+      )}
+    </>
   );
 }

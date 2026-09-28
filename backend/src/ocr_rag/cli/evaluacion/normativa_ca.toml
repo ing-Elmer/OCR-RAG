@@ -1,0 +1,156 @@
+# Set de evaluación del RAG sobre el corpus normativo centroamericano (CAUCA IV + RECAUCA IV).
+# Lo usa `python -m ocr_rag.cli evaluar`.
+#
+# Cada caso lleva los artículos que una buena respuesta debe RECUPERAR (entre las fuentes) y
+# CITAR (en el texto de la respuesta). Los números de artículo se verificaron contra el índice
+# extraído de los PDF cargados (FAOLEX: CAUCA IV Res. 223-2008, RECAUCA IV Res. 224-2008) el
+# 2026-09-26; no se tomaron de memoria.
+#
+# `esperados` son los artículos centrales: el sistema aprueba la recuperación si trae AL MENOS
+# uno, pero la respuesta ideal cita todos. Si una reforma posterior cambia la numeración, este
+# archivo se actualiza junto con el corpus.
+#
+# Tipos de caso (campo `nota`):
+#   definicion   la respuesta es un artículo que define el concepto
+#   requisitos   hay que enumerar condiciones u obligaciones
+#   codigo+regl  la respuesta completa combina el CAUCA (qué) con el RECAUCA (cómo)
+#   plazo        la pregunta busca un dato concreto (plazo, monto, momento)
+
+# --- Tránsito aduanero (caso de las pruebas manuales) --------------------------------------
+
+[[caso]]
+id = "transito-definicion"
+pregunta = "¿Qué es el tránsito aduanero?"
+esperados = [{ norma = "CAUCA IV", articulo = "94" }]
+nota = "definicion. En las pruebas manuales este artículo quedó último o fuera del top 5."
+
+[[caso]]
+id = "transito-requisitos"
+pregunta = "¿Qué es el tránsito aduanero y qué requisitos tiene?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "94" },
+  { norma = "CAUCA IV", articulo = "95" },
+  { norma = "RECAUCA IV", articulo = "393" },
+]
+nota = "codigo+regl. Definición (Art. 94), registro regional del transportista (Art. 95) y documentos que sustentan la declaración (RECAUCA 393)."
+
+[[caso]]
+id = "transito-plazo-inicio"
+pregunta = "¿Desde cuándo se empieza a contar el plazo de un tránsito aduanero?"
+esperados = [{ norma = "RECAUCA IV", articulo = "395" }]
+nota = "plazo"
+
+[[caso]]
+id = "transito-plazos-rutas"
+pregunta = "¿Quién fija los plazos y las rutas para una operación de tránsito?"
+esperados = [{ norma = "RECAUCA IV", articulo = "396" }]
+nota = "plazo"
+
+[[caso]]
+id = "dispositivos-seguridad"
+pregunta = "¿Qué son los dispositivos de seguridad que se colocan en las unidades de transporte?"
+esperados = [{ norma = "CAUCA IV", articulo = "96" }]
+nota = "definicion. Marchamos, precintos y sellos."
+
+# --- Auxiliares de la función pública aduanera --------------------------------------------
+
+[[caso]]
+id = "transportista-aduanero"
+pregunta = "¿Qué es un transportista aduanero y qué clases de transportistas existen?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "24" },
+  { norma = "RECAUCA IV", articulo = "99" },
+]
+nota = "codigo+regl"
+
+[[caso]]
+id = "operador-economico-autorizado"
+pregunta = "¿Qué es un operador económico autorizado y qué facilidades obtiene?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "28" },
+  { norma = "RECAUCA IV", articulo = "166" },
+]
+nota = "codigo+regl"
+
+# --- Obligación tributaria y garantías ----------------------------------------------------
+
+[[caso]]
+id = "nacimiento-obligacion-tributaria"
+pregunta = "¿En qué momento nace la obligación tributaria aduanera?"
+esperados = [{ norma = "CAUCA IV", articulo = "46" }]
+nota = "definicion"
+
+[[caso]]
+id = "garantia-obligacion-tributaria"
+pregunta = "¿Cómo se garantiza la obligación tributaria aduanera y cuándo se libera la garantía?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "52" },
+  { norma = "CAUCA IV", articulo = "54" },
+]
+nota = "requisitos"
+
+# --- Ingreso de mercancías y manifiesto ---------------------------------------------------
+
+[[caso]]
+id = "faltantes-sobrantes"
+pregunta = "¿Qué pasa si al descargar hay mercancías faltantes o sobrantes respecto del manifiesto y cómo se justifican?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "68" },
+  { norma = "RECAUCA IV", articulo = "261" },
+]
+nota = "codigo+regl. Arts. 69-70 del CAUCA y 262-264 del RECAUCA también son válidos."
+
+[[caso]]
+id = "arribo-forzoso"
+pregunta = "¿Qué es un arribo forzoso y cómo se autoriza la descarga en ese caso?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "62" },
+  { norma = "RECAUCA IV", articulo = "249" },
+]
+nota = "codigo+regl"
+
+[[caso]]
+id = "mercancias-peligrosas"
+pregunta = "¿Qué reglas aplican al transporte de mercancías peligrosas?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "64" },
+  { norma = "RECAUCA IV", articulo = "234" },
+]
+nota = "codigo+regl"
+
+# --- Declaración y despacho ---------------------------------------------------------------
+
+[[caso]]
+id = "declaracion-documentos"
+pregunta = "¿Qué documentos sustentan la declaración de mercancías?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "79" },
+  { norma = "RECAUCA IV", articulo = "321" },
+]
+nota = "requisitos"
+
+[[caso]]
+id = "rectificacion-declaracion"
+pregunta = "¿Se puede rectificar una declaración de mercancías ya aceptada?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "82" },
+  { norma = "RECAUCA IV", articulo = "333" },
+]
+nota = "codigo+regl"
+
+# --- Regímenes y abandono -----------------------------------------------------------------
+
+[[caso]]
+id = "clasificacion-regimenes"
+pregunta = "¿Cuáles son los regímenes aduaneros?"
+esperados = [{ norma = "CAUCA IV", articulo = "91" }]
+nota = "requisitos. Enumeración completa."
+
+[[caso]]
+id = "abandono-mercancias"
+pregunta = "¿Cuándo se consideran abandonadas las mercancías y qué pasa con ellas?"
+esperados = [
+  { norma = "CAUCA IV", articulo = "119" },
+  { norma = "RECAUCA IV", articulo = "604" },
+]
+nota = "codigo+regl"
