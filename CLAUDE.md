@@ -62,8 +62,9 @@ Los DSN/credenciales vienen de variables de entorno (ver `backend/.env.example`)
 - Variables del frontend en Vercel: `VITE_API_URL` (Production y Preview).
 
 ### Integraciones externas
-- **Extracción de texto**: en los PDF se lee primero la capa de texto nativa (`pypdf`); solo las
-  páginas sin texto se rasterizan (`pypdfium2`, sin dependencias de sistema) y pasan por
+- **Extracción de texto**: en los PDF se lee primero la capa de texto nativa (`pypdfium2`: parte
+  muchas menos palabras que `pypdf`); solo las páginas sin texto se rasterizan (también
+  `pypdfium2`, sin dependencias de sistema) y pasan por
   **Tesseract** (`pytesseract`, idiomas `spa`/`eng` instalados en la imagen). Las imágenes van
   directo a Tesseract. Todo es **bloqueante**: corre con `run_in_threadpool` dentro de la
   `BackgroundTaskQueue`, nunca en el request HTTP.
@@ -137,7 +138,7 @@ Proyecto nuevo: el esqueleto se creó alineado al estándar. Lo que falta todav�
 sino alcance pendiente:
 
 - **Sin límite de intentos de login** (rate limiting / bloqueo tras fallos): pendiente.
-- **Scripts SQL por ambiente**: base local con `001` y `002` ejecutados. En Railway, ninguno
+- **Scripts SQL por ambiente**: base local con `001` a `011` ejecutados. En Railway, ninguno
   todavía.
 - **Deploy sin configurar**: Railway y Vercel todavía no existen (ver TODO en la sección Deploy).
 - **`gh` no está instalado** en la máquina local, así que `/pr` no puede crear el PR desde acá.
