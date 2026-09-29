@@ -1,0 +1,39 @@
+# Base de datos local para desarrollo: PostgreSQL 16 con pgvector.
+# Solo para desarrollo local; en producción la base es la de Railway (ver CLAUDE.md > Deploy).
+#
+# Uso:
+#   1. Copiar .env.example a .env (raíz) y completar OCR_RAG_PG_PASSWORD.
+#   2. docker compose up -d
+#   3. Ejecutar a mano backend/db/*.sql (este compose NO los ejecuta: regla sql-migraciones).
+#
+# DSN para backend/.env:
+#   OCR_RAG_DB_MAIN_DSN=postgresql://<usuario>:<password>@127.0.0.1:<puerto>/<base>
+#   Usar 127.0.0.1 y no localhost: en Windows localhost resuelve primero a ::1 (IPv6) y el
+#   contenedor solo escucha en IPv4, así que el pool de conexiones agota el timeout.
+
+name: ocr-rag
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ocr-rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${OCR_RAG_PG_USER:-ocr_rag}
+      POSTGRES_PASSWORD: ${OCR_RAG_PG_PASSWORD:?Falta OCR_RAG_PG_PASSWORD en el .env de la raíz}
+      POSTGRES_DB: ${OCR_RAG_PG_DB:-ocr_rag}
+    ports:
+      # 15432 por defecto: en esta máquina 5432 y 5433 los usan dos PostgreSQL instalados en Windows.
+      - "127.0.0.1:${OCR_RAG_PG_PORT:-15432}:5432"
+    volumes:
+      - ocr_rag_pgdata:/var/lib/postgresql/data
+      # Scripts montados solo lectura para ejecutarlos a mano con psql dentro del contenedor.
+      - ./backend/db:/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ocr_rag_pgdata:

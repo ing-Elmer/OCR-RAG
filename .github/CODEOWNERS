@@ -1,0 +1,8 @@
+# Quién revisa qué. El repo es de una cuenta personal (ing-Elmer), así que no hay equipos
+# de organización: todo queda a cargo del dueño. Si el proyecto pasa a una organización,
+# reemplazar por equipos reales (@<org>/<equipo>).
+*                    @ing-Elmer
+/backend/            @ing-Elmer
+/frontend/           @ing-Elmer
+/backend/db/         @ing-Elmer
+/.github/            @ing-Elmer

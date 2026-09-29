@@ -1,62 +1,112 @@
-# CLAUDE.md — Estándar de desarrollo (kit de Claude Code)
+# CLAUDE.md
 
-Este repositorio define el **estándar** para construir sistemas nuevos con la misma arquitectura,
-reglas y forma de trabajo. Nació de `aa_tts` (sistema de referencia, en .NET + Oracle) e incorpora
-las mejoras que salieron de su deuda técnica; el backend del estándar migró después a
-**Python + FastAPI + PostgreSQL** conservando la arquitectura en 4 capas, el envelope
-`ApiResponse` y las reglas de datos. **No contiene nada específico de un sistema**: los datos
-propios de cada proyecto (nombre, schema, conexiones, puertos, ticket, deploy) van en el
-**perfil del proyecto** (ver abajo).
+Este proyecto sigue el **estándar de desarrollo** (agentes, reglas y comandos en `.claude/`).
+Las reglas generales viven en `.claude/rules/`; acá solo va lo propio de este sistema.
 
-## Stack estándar
-- **Backend:** Python · FastAPI · Pydantic v2 · psycopg 3 async con SQL a mano (nunca ORM) ·
-  PostgreSQL · JWT propio (PyJWT) con refresh rotativo + bcrypt · `uv`, `ruff`, `mypy --strict`,
-  `pytest`. Arquitectura en 4 capas dentro del paquete `<app>`:
-  `api / application / core / infrastructure` (validada con `import-linter`).
-- **Frontend:** React + TypeScript strict · Vite · Tailwind v4 · react-router v7 · axios · npm.
-- **Repositorio y CI:** GitHub + GitHub Actions (CLI `gh`). **Deploy:** Railway (backend +
-  PostgreSQL) y Vercel (frontend), con integración nativa que espera al CI. **Gestión:** Jira/Confluence
-  (MCP `atlassian`).
+## Perfil del proyecto
 
-## Perfil del proyecto (obligatorio en cada sistema)
-Cada proyecto que adopta el estándar tiene en su `CLAUDE.md` raíz una sección
-`## Perfil del proyecto` (plantilla en `.claude/templates/CLAUDE.proyecto.md`). Agentes, reglas y
-comandos **leen ese perfil** para saber nombres, rutas, conexiones y puertos; nunca los asumen.
-Si el perfil falta o está incompleto, pedile los datos al usuario o corré `/adoptar`.
+| Clave | Valor |
+|---|---|
+| Nombre del sistema | OCR-RAG |
+| Paquete Python (`<app>`) | `ocr_rag` → `backend/src/ocr_rag/{api,application,core,infrastructure}`, tests en `backend/tests/` |
+| Versión de Python | `3.13` (fijada en `backend/.python-version`) |
+| Ruta backend | `backend/` (`backend/pyproject.toml`) |
+| Ruta frontend | `frontend/` |
+| Ruta scripts SQL | `backend/db/` |
+| Schema PostgreSQL propio | `ocr_rag` |
+| Versión de PostgreSQL | `16` con extensión `pgvector` — **TODO**: confirmar la versión que provisione Railway |
+| Prefijo de tablas propias | `ocr_` |
+| Rama base / de integración | `Develop` (con D mayúscula, así existe en el remoto) |
+| Prefijo de tickets Jira | **TODO** — todavía no hay proyecto en Jira |
+| Puerto API local | `8000` (`uv run uvicorn ocr_rag.api.main:app --loop asyncio:SelectorEventLoop`; el `--loop` es obligatorio en Windows porque psycopg async no funciona con el `ProactorEventLoop`, y es inocuo en Linux) |
+| Puerto frontend local | `5173` |
+| Health check | `GET /health` |
+| Base local de desarrollo | `docker-compose.yml` (raíz) · `pgvector/pgvector:pg16` · `127.0.0.1:15432` (5432 y 5433 los usan dos PostgreSQL nativos de la máquina; en el DSN usar `127.0.0.1`, no `localhost`: en Windows `localhost` resuelve primero a IPv6 `::1` y el pool agota el timeout) · variables en `.env` raíz (ver `.env.example`) |
 
-## Estructura del kit
-```
-.mcp.json                  MCP compartidos: atlassian
-.claude/settings.json      plugins, permisos, agente principal (orquestador)
-.claude/settings.local.json MCP habilitados y rutas locales (personal, no se versiona)
-.claude/agents/            orquestador, backend-python, frontend-react, qa
-.claude/commands/          /adoptar, /jira, /feature-backend, /feature-frontend, /migracion,
-                           /verificar, /revisar, /commit, /pr, /levantar, /qa
-.claude/rules/             reglas del estándar; las que tienen `paths:` se cargan solo al tocar
-                           esos archivos
-  general.md               siempre activa: git, secretos, verificación, idioma, perfil
-  backend-arquitectura.md  capas, services, validación, logging, usuario actual, herramientas
-  backend-api.md           routers, ApiResponse, camelCase, excepciones, health check
-  backend-datos.md         psycopg 3, SQL parametrizado, conexiones, convenciones PostgreSQL
-  sql-migraciones.md       numeración única y convenciones de scripts PostgreSQL
-  frontend-react.md        estructura de feature, API, auth, hooks compartidos
-  frontend-estilos.md      Tailwind v4, componentes compartidos, accesibilidad
-  testing.md               qué se testea obligatoriamente y cómo
-  seguridad-config.md      secretos, Settings/.env, Docker, .gitignore
-  ci-github.md             GitHub Actions, Railway, Vercel, dependabot, CODEOWNERS
-.claude/skills/            frontend-design, react-best-practices, web-design-guidelines, webapp-testing
-.claude/templates/         CLAUDE.proyecto.md (perfil del proyecto) y proyecto/ (archivos base de
-                           .github/, Dockerfile, railway.toml, vercel.json que copia /adoptar)
-```
+### Conexiones de datos (`ConnectionFactory`)
+Los DSN/credenciales vienen de variables de entorno (ver `backend/.env.example`), nunca de este archivo.
 
-## Cómo adoptar el estándar en un sistema
-1. Copiar `.claude/` (sin `settings.local.json`) y `.mcp.json` a la raíz del proyecto.
-2. Abrir Claude Code en el proyecto y correr `/adoptar`: completa el perfil del proyecto y
-   reporta las diferencias entre el código existente y el estándar.
+| Nombre | Variable de entorno | Uso | Acceso |
+|---|---|---|---|
+| `MAIN` | `OCR_RAG_DB_MAIN_DSN` | Tablas propias del sistema y vectores (`pgvector`) | lectura/escritura |
 
-## Mantener el estándar
-- Cualquier regla nueva debe ser **genérica**: si menciona un nombre, tabla, puerto o ruta de un
-  sistema concreto, va al perfil de ese proyecto, no acá.
-- Cuando una mejora se prueba en un proyecto, subila acá para que la hereden los demás.
-- `aa_tts` (`C:\BitBukect\aa_tts`) queda como referencia de lectura para el dominio y el
-  frontend; su backend es .NET + Oracle, así que **no** se copia su código de backend.
+### Roles y permisos
+- Fuente de identidad: **propia** (tablas `ocr_usuario`, `ocr_rol`, `ocr_permiso` en el schema `ocr_rag`).
+- Roles (seed en `backend/db/002_seed_roles_permisos.sql`):
+
+  | Rol | `DOCUMENTOS_VER` | `DOCUMENTOS_CARGAR` | `CONSULTAS_REALIZAR` | `USUARIOS_ADMINISTRAR` |
+  |---|---|---|---|---|
+  | `ADMIN` | ✔ | ✔ | ✔ | ✔ |
+  | `OPERADOR` | ✔ | ✔ | ✔ | |
+  | `LECTOR` | ✔ | | ✔ | |
+
+- Autenticación: JWT de acceso (`HS256`, 15 min, claim `type: "access"`) + refresh token opaco
+  (7 días, guardado como hash SHA-256, rotado en cada uso; el reuso de uno revocado revoca toda
+  la sesión del usuario). Endpoints `POST /api/auth/{login,refresh,logout}`.
+- Primer administrador: `uv run python -m ocr_rag.cli crear-admin` (pide la contraseña por
+  teclado; requiere haber ejecutado los scripts 001 y 002).
+- El frontend resuelve rol y permisos desde `GET /api/me`, nunca desde los claims del JWT.
+
+### Deploy
+- Repositorio GitHub: `ing-Elmer/OCR-RAG` · CI: `.github/workflows/ci.yml` (checks `ci-backend`,
+  `ci-frontend`) · rama que despliega: `Develop`.
+- Backend: **Railway** · proyecto **TODO** · servicio **TODO** · URL **TODO** · base PostgreSQL de
+  Railway **TODO** (necesita `pgvector`) · *Wait for CI* activado.
+- Frontend: **Vercel** · proyecto **TODO** · dominio de producción **TODO** ·
+  *Deployment Checks* `ci-backend` + `ci-frontend`.
+- Variables del backend en Railway (solo nombres): `OCR_RAG_DB_MAIN_DSN` (referencia a
+  `${{Postgres.DATABASE_URL}}`), `OCR_RAG_JWT_SIGNING_KEY`, `OCR_RAG_JWT_ALGORITHM`,
+  `OCR_RAG_CORS_ORIGINS`, `OCR_RAG_OPENAI_API_KEY`, `OCR_RAG_OPENAI_CHAT_MODEL`,
+  `OCR_RAG_OPENAI_EMBEDDING_MODEL`, `OCR_RAG_TESSERACT_LANGS`, `OCR_RAG_ENV`,
+  `OCR_RAG_DOCS_ENABLED`.
+- Variables del frontend en Vercel: `VITE_API_URL` (Production y Preview).
+
+### Integraciones externas
+- **Tesseract local** (`pytesseract` + `poppler-utils`, instalados en la imagen del backend) —
+  OCR de PDFs e imágenes. Es una librería **bloqueante**: se ejecuta con `run_in_threadpool`
+  dentro de la `BackgroundTaskQueue`, nunca en el request HTTP.
+- **OpenAI** — generación de respuestas (chat) y embeddings (`text-embedding-3-small`, 1536
+  dimensiones). API key como `SecretStr` en `Settings`.
+- **pgvector** — los embeddings viven en `ocr_rag.ocr_documento_chunk.embedding` en la misma
+  base PostgreSQL, no en un vector store aparte.
+
+### Integración con Codex
+Codex CLI (≥ 0.157) se usa desde Claude en modo no interactivo. Ya no expone un servidor MCP
+(`codex mcp-server` no existe en esa versión), así que no se integra por MCP.
+- `/codex-revisar [rama base]` — segunda opinión: `codex review` en solo lectura; Claude
+  verifica cada hallazgo en el código y los consolida con su propia revisión.
+- `/codex-delegar <tarea>` — Claude arma un prompt autosuficiente (perfil + reglas + contrato +
+  límites) y lo ejecuta con `codex exec -s workspace-write`. Después verifica el resultado con
+  build, tests y reglas, igual que con un subagente.
+- Codex **no** lee `CLAUDE.md` ni `.claude/rules/` por su cuenta (no hay `AGENTS.md`). Por eso
+  el contexto viaja siempre dentro del prompt.
+- Límites iguales a los del estándar: sin SQL, sin secretos, sin commit/push y nunca
+  `danger-full-access`.
+
+## Dominio
+Sistema de **OCR + RAG**: se suben documentos (PDF o imagen), se les extrae el texto con
+Tesseract, se parten en chunks, se generan embeddings con OpenAI y se guardan en `pgvector`.
+Sobre ese corpus se responden consultas en lenguaje natural recuperando los chunks más
+relevantes y pasándoselos al modelo de chat.
+
+## Excepciones al estándar
+- **Rama base `Develop`** (con mayúscula) en lugar de `develop`: es el nombre que ya existe en el
+  remoto. Los workflows y la protección de rama usan esa grafía exacta.
+- **Almacenamiento de los archivos subidos: sin definir.** El contenedor de Railway es efímero,
+  así que hay que elegir entre volumen de Railway, un bucket S3 o guardar el binario como
+  `bytea` en PostgreSQL. Hasta que se decida, no hay endpoint de subida de documentos.
+
+## Deuda técnica conocida
+Proyecto nuevo: el esqueleto se creó alineado al estándar. Lo que falta todavía no es deuda
+sino alcance pendiente:
+
+- **Sin límite de intentos de login** (rate limiting / bloqueo tras fallos): pendiente.
+- **Scripts SQL por ambiente**: `001` ejecutado en la base local; `002_seed_roles_permisos.sql`
+  pendiente de ejecutar. En Railway, ninguno todavía.
+- **Deploy sin configurar**: Railway y Vercel todavía no existen (ver TODO en la sección Deploy).
+- **`gh` no está instalado** en la máquina local, así que `/pr` no puede crear el PR desde acá.
+- **Red corporativa con proxy TLS**: en esta máquina `uv sync` falla con
+  `invalid peer certificate: UnknownIssuer` y hay que correrlo como `uv sync --system-certs`.
+  Es un dato del entorno local, no del proyecto: el CI de GitHub Actions no lo necesita.
+- **`agent-view.vsix`** quedó versionado en la raíz desde el commit inicial del kit; evaluar si
+  corresponde sacarlo del repo.
